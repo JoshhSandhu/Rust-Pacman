@@ -1,5 +1,5 @@
 [package]
-name = "Pacman-termial"
+name = "Pacman-terminal"
 version = "0.1.0"
 edition = "2024"
 

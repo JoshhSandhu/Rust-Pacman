@@ -3,7 +3,7 @@
 version = 4
 
 [[package]]
-name = "Pacman-termial"
+name = "Pacman-terminal"
 version = "0.1.0"
 dependencies = [
  "crossterm",

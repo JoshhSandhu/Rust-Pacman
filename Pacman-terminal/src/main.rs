@@ -1,4 +1,5 @@
 use std::io::{stdout, Stdout, Write};
+use std::task::Poll;
 use std::time::Duration;
 use std::thread;
 
@@ -72,7 +73,7 @@ impl Game{
 
 
         if self.map[new_y][new_x] != '#' {  //checking for a wall
-            if self.map[new_y][new_x] == "."{  //checking for pellets
+            if self.map[new_y][new_x] == '.'{  //checking for pellets
                 self.score += 10;
                 self.pallets -= 1;
             }
@@ -111,6 +112,39 @@ fn draw(Stdout: &mut std::io::Stdout, game: &Game){
     Stdout.flush().unwrap();
 }
 
-fn main() {
-    println!("Hello, world!");
+fn main() -> std::io::Result<()>{
+
+    let mut Stdout= stdout();
+
+    //enabling raw mode
+    enable_raw_mode()?;
+    execute!(Stdout, Hide)?;  //this hides the blnking cursor
+
+    let mut game = Game::new();
+
+    loop{
+        draw(&mut Stdout, &game);
+
+        //checking for the keyboard input
+        if poll(Duration::from_millis(200))? {
+            if let Event::Key(key_event) = read()?{
+                match key_event.code{
+                    KeyCode::Char('q') | KeyCode::Esc => break,
+                    KeyCode::Up | KeyCode::Char('w') => game.move_player(0, -1),
+                    KeyCode::Down | KeyCode::Char('s') => game.move_player(0, 1),
+                    KeyCode::Right | KeyCode::Char('d') => game.move_player(-1, 0),
+                    KeyCode::Left | KeyCode::Char('a') => game.move_player(1, 0),
+                    _ => {}
+                }
+            }
+        }
+        if game.pallets == 0{
+            break;
+        }
+    }
+
+    // Clean up the terminal before exiting
+    execute!(Stdout, Show)?; // Show the cursor again
+    disable_raw_mode()?; // Restore normal terminal behavior
+    Ok(())
 }

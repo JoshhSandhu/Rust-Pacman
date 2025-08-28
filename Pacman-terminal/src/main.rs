@@ -1,4 +1,5 @@
-use std::io::{stdout, Write};
+use std::io::{stdout, Stdout, Write};
+use std::task::Poll;
 use std::time::Duration;
 use std::thread;
 
@@ -44,9 +45,12 @@ impl Game{
 
         let map: Vec<Vec<char>> = map_str.iter().map(|s|s.chars().collect()).collect();
 
+        //setting the start position of the player and the pellet count to 0
         let mut start_x = 0;
         let mut start_y = 0;
         let mut pallets = 0;
+
+        //
         for (y, row) in map.iter().enumerate(){
             for (x, &char) in row.iter().enumerate(){
                 if char == 'P'{
@@ -62,21 +66,85 @@ impl Game{
         Game { map, player: Player { x: start_x, y: start_y }, score: 0, pallets }
     }
 
+    //fn to move the player within the bounds of the walls and collect pellets
     fn move_player (&mut self , dx: i32, dy: i32){
         let new_x = (self.player.x as i32 + dx) as usize;
         let new_y = (self.player.y as i32 + dy) as usize;
 
 
-        if self.map[new_y][new_x] != '#' {
-            if self.map[new_y][new_x] == "."{
+        if self.map[new_y][new_x] != '#' {  //checking for a wall
+            if self.map[new_y][new_x] == '.'{  //checking for pellets
                 self.score += 10;
                 self.pallets -= 1;
+            }
+
+            self.map[self.player.y][self.player.x] = ' ';  //this clears the players last position
+
+            //updating the players position
+            self.player.x = new_x;
+            self.player.y = new_y;
+
+            self.map[self.player.y][self.player.x] = 'P';  //moving the player to the newer position in the map
         }
     }
 }
 
+//drawing the game on the terminal
+fn draw(Stdout: &mut std::io::Stdout, game: &Game){
 
+    //clearing the screen and movng the cursor to the top left
+    execute!(Stdout, Clear(ClearType::All), MoveTo(0, 0)).unwrap();
 
-fn main() {
-    println!("Hello, world!");
+    //drawing the map each row at a time
+    for row in &game.map{
+        let line: String = row.iter().collect();  // turns the char in row into string
+        println!("{}\r", line);  //the \r moves the cursor to the begining of the current line
+    }
+
+    //the score and the remiaing pallets
+    println!("Score: {}\r", game.score);
+    println!("pellets: {}\r", game.pallets);
+
+    if game.pallets == 0 {
+        println!("YOU WIN !!!");
+    }
+
+    Stdout.flush().unwrap();
+}
+
+fn main() -> std::io::Result<()>{
+
+    let mut Stdout= stdout();
+
+    //enabling raw mode
+    enable_raw_mode()?;
+    execute!(Stdout, Hide)?;  //this hides the blnking cursor
+
+    let mut game = Game::new();
+
+    loop{
+        draw(&mut Stdout, &game);
+
+        //checking for the keyboard input
+        if poll(Duration::from_millis(200))? {
+            if let Event::Key(key_event) = read()?{
+                match key_event.code{
+                    KeyCode::Char('q') | KeyCode::Esc => break,
+                    KeyCode::Up | KeyCode::Char('w') => game.move_player(0, -1),
+                    KeyCode::Down | KeyCode::Char('s') => game.move_player(0, 1),
+                    KeyCode::Right | KeyCode::Char('d') => game.move_player(-1, 0),
+                    KeyCode::Left | KeyCode::Char('a') => game.move_player(1, 0),
+                    _ => {}
+                }
+            }
+        }
+        if game.pallets == 0{
+            break;
+        }
+    }
+
+    // Clean up the terminal before exiting
+    execute!(Stdout, Show)?; // Show the cursor again
+    disable_raw_mode()?; // Restore normal terminal behavior
+    Ok(())
 }

@@ -13,6 +13,7 @@ describe("pacman", () => {
   //unique game address for our game account
   const gameKeypair = anchor.web3.Keypair.generate();
 
+  //testing if the game account gets created
   it("we have a game account", async () => {
     // Add your test here.
 
@@ -33,4 +34,21 @@ describe("pacman", () => {
     expect(gameState.playerY).to.equal(5);
     console.log("Your transaction signature");
   });
+
+  //testing if the movement work
+  it("we have movement", async () => {
+    const direction = 3;
+    await program.methods.playerMnt(direction)
+    .accounts({
+      game:gameKeypair.publicKey,
+    })
+    .rpc();
+
+    const gameState = await program.account.gameData.fetch(gameKeypair.publicKey);
+
+    //player moves by 1 or not?
+    expect(gameState.playerX).to.equal(6);
+    expect(gameState.playerY).to.equal(5);
+
+  })
 });

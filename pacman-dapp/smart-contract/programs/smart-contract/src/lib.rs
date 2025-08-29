@@ -30,7 +30,17 @@ pub mod pacman_game {
     }
 
     //player movement
-    pub fn player_mnt(ctx: Context<PlayerMove>) -> Result<()>{
+    pub fn player_mnt(ctx: Context<PlayerMove>, direction: u8) -> Result<()>{
+        let game = &mut ctx.accounts.game;
+
+        match direction {
+            3 => {
+                game.player_x = game.player_x.checked_add(1).unwrap();
+            }
+            _ => {
+                //do nothting
+            }
+        }
         Ok(())
     }
 }
@@ -56,7 +66,11 @@ pub struct CreateGame<'info>{
 }
 
 #[derive(Accounts)]
-pub struct PlayerMove {
+pub struct PlayerMove<'info> {
+
+    //permision to change stuff in the game data
+    #[account(mut)]
+    pub game: Account<'info, GameData>,
 
 }
 

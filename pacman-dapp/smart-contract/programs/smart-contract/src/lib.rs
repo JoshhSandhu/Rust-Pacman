@@ -4,37 +4,69 @@ use anchor_lang::prelude::*;
 
 declare_id!("3HpZLCtECuB6fQHtLQUSpV5SkT41z1ES3pkZv5tak91Z");
 //automatically assigned unique address after build by anchor
+//this is of 8 bytes
 
 //main container of our program logic
 #[program]   
 pub mod pacman_game {
     use super::*;
 
-    pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
-        msg!("Greetings from: {:?}", ctx.program_id);
-        Ok(())
-    }
+    // pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
+    //     msg!("Greetings from: {:?}", ctx.program_id);
+    //     Ok(())
+    // }
 
     //create a new game
-    pub fn create_game(ctx: Context<Create_game>) -> Result<()> {
+    pub fn create_game(ctx: Context<CreateGame>) -> Result<()> {
+        
+        //mut ref to game account
+        let game = &mut ctx.accounts.game;
+
+        //set player init pos
+        game.player_x = 5;
+        game.player_y = 5;
+        game.score = 0;
         Ok(())
     }
 
     //player movement
-    pub fn player_mnt(ctx: Context<Player_move>) -> Result<()>{
+    pub fn player_mnt(ctx: Context<PlayerMove>) -> Result<()>{
         Ok(())
     }
 }
 
 #[derive(Accounts)]
-pub struct Create_game {}
+pub struct CreateGame<'info>{
+    
+    //this tell anchor to create a new account for create game struct
+    #[account(
+        init,  //tells sol we want to initialize a new account
+        payer = user,  //this guy will pay for the transaction
+        space = 18  // the space used by the game data
+    )]
+    pub game: Account<'info, GameData>,
+
+    //the player that is creating the game and paying for it
+    #[account(mut)]
+    pub user: Signer<'info>,  //proof that the user has approved the transcation
+
+    //solana program required for creating accounts
+    pub system_program: Program<'info, System>,
+    
+}
 
 #[derive(Accounts)]
-pub struct Player_move {}
+pub struct PlayerMove {
+
+}
 
 #[account]
 pub struct GameData {
     //player score
+    pub score: u64,
     //player position
-    //pallets left
+    pub player_x: u8,
+    pub player_y: u8,
+
+    //this takes up 18 bytes of space 1(posx) + 1(posy) + 8(score) + 8(pre alooted anchor unique identigyier)
 }

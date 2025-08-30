@@ -46,13 +46,13 @@ pub mod pacman_game {
 }
 
 #[derive(Accounts)]
-pub struct CreateGame<'info>{
+pub struct CreateGame<'info>{  //these are contexts
     
     //this tell anchor to create a new account for create game struct
     #[account(
         init,  //tells sol we want to initialize a new account
         payer = user,  //this guy will pay for the transaction
-        space = 18  // the space used by the game data
+        space = 18 // the space used by the game data
     )]
     pub game: Account<'info, GameData>,
 
@@ -84,3 +84,5 @@ pub struct GameData {
 
     //this takes up 18 bytes of space 1(posx) + 1(posy) + 8(score) + 8(pre alooted anchor unique identigyier)
 }
+
+#[de]

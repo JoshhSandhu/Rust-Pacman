@@ -1,7 +1,7 @@
-import * as anchor from "@coral-xyz/anchor";
-import { Program } from "@coral-xyz/anchor";
-import { PacmanGame } from "../target/types/pacman_game";  //geting the type file
-import { expect } from "chai";
+import * as anchor from '@coral-xyz/anchor';
+import { Program } from '@coral-xyz/anchor';
+import { PacmanGame } from '../target/types/pacman_game';  //geting the type file
+import { expect } from 'chai';
 
 describe("pacman", () => {
   // Configure the client to use the local cluster.

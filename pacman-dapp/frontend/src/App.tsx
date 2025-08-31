@@ -1,16 +1,13 @@
 import { useMemo } from 'react';
 import { ConnectionProvider, WalletProvider, useWallet } from '@solana/wallet-adapter-react';
-import { WalletModalProvider, WalletMultiButton } from '@solana/wallet-adapter-react-ui';
+import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
 import { PhantomWalletAdapter } from '@solana/wallet-adapter-wallets';
-//import GameScreen from './GameScreen'; // Import our game component
+import HomeScreen from './pages/HomeScreen'; // Import our game component
+import GameScreen from './pages/GameScreen';
+import RoleSelector from './components/RouteSelector';
 
 import '@solana/wallet-adapter-react-ui/styles.css';
-
-// This small component decides whether to show the game or a connect message
-const WalletChecker = () => {
-    const { publicKey } = useWallet();
-    return publicKey ? <p>the game!</p> : <p>Connect your wallet to start the game!</p>;
-}
+import { BrowserRouter, Route, Routes } from 'react-router-dom';
 
 // This is the main component that sets up the wallet providers
 const App = () => {
@@ -21,11 +18,14 @@ const App = () => {
         <ConnectionProvider endpoint={endpoint}>
             <WalletProvider wallets={wallets}>
                 <WalletModalProvider>
-                    <div className="container">
-                        <h1>Solana Pac-Man</h1>
-                        <WalletMultiButton />
-                        <WalletChecker />
-                    </div>
+                  <BrowserRouter>
+                    <Routes>
+                      <Route path="/" element={<HomeScreen />} />
+                      <Route path="/role-selector" element={<RoleSelector />} />
+                      <Route path="/GameScreen" element={<GameScreen />} />
+                      <Route path="*" element={<div>Page Not Found</div>} />
+                    </Routes>
+                  </BrowserRouter>
                 </WalletModalProvider>
             </WalletProvider>
         </ConnectionProvider>

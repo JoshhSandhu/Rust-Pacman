@@ -2,7 +2,7 @@ use anchor_lang::prelude::*;
 //main library for writing anchor programs
 
 
-declare_id!("3HpZLCtECuB6fQHtLQUSpV5SkT41z1ES3pkZv5tak91Z");
+declare_id!("34H7YXCqgZmYNUyHdTcX8q6e75jcU7A59g3Mnwahnq5U");
 //automatically assigned unique address after build by anchor
 //this is of 8 bytes
 
@@ -33,12 +33,27 @@ pub mod pacman_game {
     pub fn player_mnt(ctx: Context<PlayerMove>, direction: u8) -> Result<()>{
         let game = &mut ctx.accounts.game;
 
+        // 0 = Up, 1 = Down, 2 = Left, 3 = Right
         match direction {
+            // Move Up
+            0 => {
+                // checked_sub prevents underflow (going below 0)
+                game.player_y = game.player_y.checked_sub(1).unwrap_or(game.player_y);
+            }
+            // Move Down
+            1 => {
+                game.player_y = game.player_y.checked_add(1).unwrap_or(game.player_y);
+            }
+            // Move Left
+            2 => {
+                game.player_x = game.player_x.checked_sub(1).unwrap_or(game.player_x);
+            }
+            // Move Right
             3 => {
-                game.player_x = game.player_x.checked_add(1).unwrap();
+                game.player_x = game.player_x.checked_add(1).unwrap_or(game.player_x);
             }
             _ => {
-                //do nothting
+                // If any other number is sent, do nothing
             }
         }
         Ok(())

@@ -84,5 +84,3 @@ pub struct GameData {
 
     //this takes up 18 bytes of space 1(posx) + 1(posy) + 8(score) + 8(pre alooted anchor unique identigyier)
 }
-
-#[de]

@@ -1,12 +1,12 @@
 export type PacmanGame = {
-    "address": "34H7YXCqgZmYNUyHdTcX8q6e75jcU7A59g3Mnwahnq5U",
-    "metadata": {
-    "name": "pacman_game",
+    "address": "3HpZLCtECuB6fQHtLQUSpV5SkT41z1ES3pkZv5tak91Z",
+  "metadata": {
+    "name": "pacmanGame",
     "version": "0.1.0",
     "spec": "0.1.0",
     "description": "Created with Anchor"
-    },
-    "instructions": [
+  },
+  "instructions": [
     {
       "name": "createGame",
       "discriminator": [
@@ -23,7 +23,23 @@ export type PacmanGame = {
         {
           "name": "game",
           "writable": true,
-          "signer": true
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "user"
+              }
+            ]
+          }
         },
         {
           "name": "user",
@@ -52,7 +68,28 @@ export type PacmanGame = {
       "accounts": [
         {
           "name": "game",
-          "writable": true
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "user"
+              }
+            ]
+          }
+        },
+        {
+          "name": "user",
+          "signer": true
         }
       ],
       "args": [
@@ -103,14 +140,14 @@ export type PacmanGame = {
 };
 
 export const IDL: PacmanGame = {
-    "address": "34H7YXCqgZmYNUyHdTcX8q6e75jcU7A59g3Mnwahnq5U",
-    "metadata": {
-    "name": "pacman_game",
+    "address": "3HpZLCtECuB6fQHtLQUSpV5SkT41z1ES3pkZv5tak91Z",
+  "metadata": {
+    "name": "pacmanGame",
     "version": "0.1.0",
     "spec": "0.1.0",
     "description": "Created with Anchor"
-    },
-    "instructions": [
+  },
+  "instructions": [
     {
       "name": "createGame",
       "discriminator": [
@@ -127,7 +164,23 @@ export const IDL: PacmanGame = {
         {
           "name": "game",
           "writable": true,
-          "signer": true
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "user"
+              }
+            ]
+          }
         },
         {
           "name": "user",
@@ -156,7 +209,28 @@ export const IDL: PacmanGame = {
       "accounts": [
         {
           "name": "game",
-          "writable": true
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "user"
+              }
+            ]
+          }
+        },
+        {
+          "name": "user",
+          "signer": true
         }
       ],
       "args": [

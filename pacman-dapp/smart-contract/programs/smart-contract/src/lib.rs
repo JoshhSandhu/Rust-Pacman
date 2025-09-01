@@ -2,7 +2,7 @@ use anchor_lang::prelude::*;
 //main library for writing anchor programs
 
 
-declare_id!("34H7YXCqgZmYNUyHdTcX8q6e75jcU7A59g3Mnwahnq5U");
+declare_id!("3HpZLCtECuB6fQHtLQUSpV5SkT41z1ES3pkZv5tak91Z");
 //automatically assigned unique address after build by anchor
 //this is of 8 bytes
 
@@ -67,7 +67,9 @@ pub struct CreateGame<'info>{  //these are contexts
     #[account(
         init,  //tells sol we want to initialize a new account
         payer = user,  //this guy will pay for the transaction
-        space = 18 // the space used by the game data
+        space = 18, // the space used by the game data
+        seeds = [b"game", user.key().as_ref()],
+        bump
     )]
     pub game: Account<'info, GameData>,
 
@@ -84,9 +86,12 @@ pub struct CreateGame<'info>{  //these are contexts
 pub struct PlayerMove<'info> {
 
     //permision to change stuff in the game data
-    #[account(mut)]
+    #[account(mut,
+        seeds = [b"game", user.key().as_ref()],
+        bump
+    )]
     pub game: Account<'info, GameData>,
-
+    pub user: Signer<'info>,
 }
 
 #[account]

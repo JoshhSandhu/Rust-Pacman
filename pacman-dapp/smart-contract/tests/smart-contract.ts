@@ -1,7 +1,9 @@
-import * as anchor from "@coral-xyz/anchor";
-import { Program } from "@coral-xyz/anchor";
-import { PacmanGame } from "../target/types/pacman_game";  //geting the type file
-import { expect } from "chai";
+import * as anchor from '@coral-xyz/anchor';
+import { Program } from '@coral-xyz/anchor';
+import { PacmanGame } from '../target/types/pacman_game';
+import { expect } from 'chai';
+import { PublicKey } from '@solana/web3.js'; // Import PublicKey
+import { Buffer } from 'buffer'; // Import Buffer
 
 describe("pacman", () => {
   // Configure the client to use the local cluster.
@@ -9,46 +11,52 @@ describe("pacman", () => {
   anchor.setProvider(provider);
 
   const program = anchor.workspace.PacmanGame as Program<PacmanGame>;
+  
+  // We no longer need a keypair for the game.
+  // Instead, we will calculate its PDA.
+  let gamePda: PublicKey;
 
-  //unique game address for our game account
-  const gameKeypair = anchor.web3.Keypair.generate();
+  // Find the PDA before running the tests
+  before(async () => {
+    [gamePda] = PublicKey.findProgramAddressSync(
+      [Buffer.from("game"), provider.wallet.publicKey.toBuffer()],
+      program.programId
+    );
+  });
 
-  //testing if the game account gets created
+  // Test if the PDA game account gets created
   it("we have a game account", async () => {
-    // Add your test here.
-
-    //this provide all the instructons that the createGame struct needs
+    // Call the create_game instruction
     await program.methods.createGame().accounts({
-      game: gameKeypair.publicKey,
+      game: gamePda, // Pass the calculated PDA
       user: provider.wallet.publicKey,
       systemProgram: anchor.web3.SystemProgram.programId,
     })
-    .signers([gameKeypair])
+    // The .signers() array is REMOVED because the program signs for the PDA
     .rpc();
 
-    //retrives the data from the newly created account
-    const gameState = await program.account.gameData.fetch(gameKeypair.publicKey);
+    // Retrieve the data from the newly created PDA
+    const gameState = await program.account.gameData.fetch(gamePda);
 
     expect(gameState.score.toNumber()).to.equal(0);
     expect(gameState.playerX).to.equal(5);
     expect(gameState.playerY).to.equal(5);
-    console.log("Your transaction signature");
   });
 
-  //testing if the movement work
+  // Test if the movement works on the PDA
   it("we have movement", async () => {
-    const direction = 3;
+    const direction = 3; // 3 = Right
     await program.methods.playerMnt(direction)
     .accounts({
-      game:gameKeypair.publicKey,
+      game: gamePda, // Pass the game PDA
+      user: provider.wallet.publicKey, // The user is now required for seeds
     })
     .rpc();
 
-    const gameState = await program.account.gameData.fetch(gameKeypair.publicKey);
+    const gameState = await program.account.gameData.fetch(gamePda);
 
-    //player moves by 1 or not?
+    // Check if the player moved by 1
     expect(gameState.playerX).to.equal(6);
     expect(gameState.playerY).to.equal(5);
-
-  })
+  });
 });

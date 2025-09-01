@@ -33,12 +33,27 @@ pub mod pacman_game {
     pub fn player_mnt(ctx: Context<PlayerMove>, direction: u8) -> Result<()>{
         let game = &mut ctx.accounts.game;
 
+        // 0 = Up, 1 = Down, 2 = Left, 3 = Right
         match direction {
+            // Move Up
+            0 => {
+                // checked_sub prevents underflow (going below 0)
+                game.player_y = game.player_y.checked_sub(1).unwrap_or(game.player_y);
+            }
+            // Move Down
+            1 => {
+                game.player_y = game.player_y.checked_add(1).unwrap_or(game.player_y);
+            }
+            // Move Left
+            2 => {
+                game.player_x = game.player_x.checked_sub(1).unwrap_or(game.player_x);
+            }
+            // Move Right
             3 => {
-                game.player_x = game.player_x.checked_add(1).unwrap();
+                game.player_x = game.player_x.checked_add(1).unwrap_or(game.player_x);
             }
             _ => {
-                //do nothting
+                // If any other number is sent, do nothing
             }
         }
         Ok(())
@@ -52,7 +67,9 @@ pub struct CreateGame<'info>{  //these are contexts
     #[account(
         init,  //tells sol we want to initialize a new account
         payer = user,  //this guy will pay for the transaction
-        space = 18 // the space used by the game data
+        space = 18, // the space used by the game data
+        seeds = [b"game", user.key().as_ref()],
+        bump
     )]
     pub game: Account<'info, GameData>,
 
@@ -69,9 +86,12 @@ pub struct CreateGame<'info>{  //these are contexts
 pub struct PlayerMove<'info> {
 
     //permision to change stuff in the game data
-    #[account(mut)]
+    #[account(mut,
+        seeds = [b"game", user.key().as_ref()],
+        bump
+    )]
     pub game: Account<'info, GameData>,
-
+    pub user: Signer<'info>,
 }
 
 #[account]
@@ -84,5 +104,3 @@ pub struct GameData {
 
     //this takes up 18 bytes of space 1(posx) + 1(posy) + 8(score) + 8(pre alooted anchor unique identigyier)
 }
-
-#[de]

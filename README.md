@@ -27,15 +27,15 @@ This project is split into two main versions, each in its own directory.
 
 This version runs directly in your terminal, using characters to render the game world. It's a fun, minimalist take on the classic.
 
-* **Location**: `/v1-terminal` (Please update this path if it's different!)
-* **UI Library**: Probably `crossterm` or `termion`.
+* **Location**: `/Pacman-terminal`
+* **UI Library**: `crossterm`.
 
 ### Version 2: Graphical Edition
 
 This is a modern implementation with a graphical user interface (GUI), featuring sprites for Pacman, the ghosts, and the maze.
 
-* **Location**: `/v2-graphical` (Please update this path if it's different!)
-* **Graphics Engine**: You can specify the engine you used, for example: `Bevy`, `ggez`, or `macroquad`.
+* **Location**: `pacman-GUI/pacman`
+* **Graphics Engine**: `macroquad`.
 
 ***
 

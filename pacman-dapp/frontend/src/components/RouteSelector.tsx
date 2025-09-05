@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { program } from '../anchor/setup';
 import { Keypair, SystemProgram, PublicKey } from '@solana/web3.js';
+import { Buffer } from 'buffer';
 
 const RoleSeector = () => {
     const navigate = useNavigate();
@@ -67,12 +68,12 @@ const RoleSeector = () => {
             const signature = await sendTransaction(tx, connection);
             console.log("Transaction sent with signature:", signature);
             
-            await connection.confirmTransaction(signature, 'confirmed');
+            await connection.confirmTransaction(signature, 'finalized');
             console.log("Transaction confirmed");
 
             alert("Game created successfully! Game ID: " + gamePda.toBase58());
 
-            navigate('/GameScreen');
+            navigate(`/GameScreen?gameId=${gamePda.toBase58()}`);
 
         } catch (error) {
             console.error("Error creating game:", error);

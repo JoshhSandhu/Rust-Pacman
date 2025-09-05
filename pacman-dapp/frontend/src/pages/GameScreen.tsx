@@ -13,6 +13,20 @@ const Direction = {
     Right: 3,
 };
 
+// 0 = Pellet, 1 = Wall, 2 = Empty
+const levelLayout = [
+  [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+  [1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+  [1, 0, 1, 1, 0, 0, 1, 1, 0, 1],
+  [1, 0, 0, 0, 0, 1, 0, 0, 0, 1],
+  [1, 0, 1, 0, 0, 0, 0, 1, 0, 1],
+  [1, 0, 1, 0, 0, 2, 0, 1, 0, 1],
+  [1, 0, 0, 1, 0, 0, 1, 0, 0, 1],
+  [1, 0, 1, 1, 1, 1, 1, 1, 0, 1],
+  [1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+  [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+];
+
 const GameScreen = () => {
     const { publicKey, sendTransaction} = useWallet();
     const [searchParams] = useSearchParams();
@@ -35,6 +49,7 @@ const GameScreen = () => {
     useEffect(() => {
         if (!gameId) return;
 
+        console.log("1. Starting data fetch for game:", gameId.toBase58());
         //set up a listner for account changes
         const listner = program.account.gameData.subscribe(gameId, 'confirmed');
         listner.on('change', (data) => {
@@ -42,14 +57,16 @@ const GameScreen = () => {
             setGameData(data as GameData);
         });
 
-        const fetchInitialState = async () => {
-            try {
-                const data = await program.account.gameData.fetch(gameId, "processed");
-                setGameData(data as GameData);
-            } catch (e) {
-                console.error("Failed to fetch game data:", e);
-            }
-        };
+         const fetchInitialState = async () => {
+        try {
+            console.log("2. About to call program.account.gameData.fetch()...");
+            const data = await program.account.gameData.fetch(gameId, "processed");
+            console.log("3. fetch() completed successfully! Received data:", data);
+            setGameData(data as GameData);
+        } catch (e) {
+            console.error("4. fetch() failed with an error:", e);
+        }
+    };
 
         fetchInitialState();
         
@@ -103,18 +120,34 @@ const GameScreen = () => {
     const renderBoard = () => {
         if (!gameData) return <div>Loading Game...</div>;
 
-        const grid = [];
-        for (let y = 0; y < BOARD_SIZE; y++) {
-            for (let x = 0; x < BOARD_SIZE; x++) {
-                const isPlayerHere = gameData.playerX === x && gameData.playerY === y;
-                grid.push(
-                    <div key={`${x}-${y}`} className="game-cell">
-                        {isPlayerHere ? '😀' : ''}
-                    </div>
-                );
+        return levelLayout.map((row, y) =>
+        row.map((cell, x) => {
+            const isPlayerHere = gameData.playerX === x && gameData.playerY === y;
+            let cellContent = null;
+
+            if (isPlayerHere) {
+            cellContent = '😀';
+            } else {
+            switch (cell) {
+                case 0: // Pellet
+                cellContent = <div className="pellet"></div>;
+                break;
+                case 1: // Wall
+                cellContent = <div className="wall"></div>;
+                break;
+                case 2: // Empty space
+                cellContent = null;
+                break;
             }
-        }
-        return grid;
+            }
+
+            return (
+            <div key={`${x}-${y}`} className="game-cell">
+                {cellContent}
+            </div>
+            );
+        })
+        );
     };
 
     return (
@@ -122,9 +155,13 @@ const GameScreen = () => {
             <h1 className="text-3xl font-bold mb-4">Pacman Game</h1>
             <p className="mb-2 text-xs">Game PDA: {gameId?.toBase58()}</p>
             <p className="mb-4">Score: {gameData?.score.toString() ?? '0'}</p>
+            
+            {/* This is the container for the board */}
             <div className="game-board">
+                {/* You must call the function here to render the board */}
                 {renderBoard()}
             </div>
+            
             <p className="mt-4">Use Arrow Keys to Move</p>
         </div>
     );

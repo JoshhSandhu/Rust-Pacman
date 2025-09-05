@@ -2,17 +2,28 @@
 
 use macroquad::prelude::*;
 
-// --- Game Constants ---
-// This is our new bridge between the grid and pixels!
+// Game Constants
 const TILE_SIZE: f32 = 32.0;
 
 // here in the terminal version we used the crossterm crate
 // apart from that the basic game structure remains the same
 
+// making an enum for the 4 possible directions
+enum Directions{
+    Up,
+    Down,
+    Left,
+    Right,
+}
+
 // player defination
+//updating this to store the animation state
 struct Player {
     x: usize,
     y: usize,
+    direction: Directions,
+    animation_timer: f32,  //animation speed
+    pac_mouth: bool,  //is the mouth open? 
 }
 
 // the game defination
@@ -62,7 +73,13 @@ impl Game {
 
         Game {
             map,
-            player: Player { x: start_x, y: start_y },
+            player: Player { 
+                x: start_x, 
+                y: start_y,
+                direction: Directions::Right,  // initially looing to the right
+                animation_timer: 0.0,
+                pac_mouth: true, 
+            },
             score: 0,
             pellets,
         }
@@ -71,6 +88,13 @@ impl Game {
     // the core move logic is similar, but simpler.
     // we no longer need to write 'P' into the map grid.
     fn move_player(&mut self, dx: i32, dy: i32) {
+
+        // face based on the input direction
+        if dx == 1 { self.player.direction = Directions::Right; }
+        if dx == -1 { self.player.direction = Directions::Left; }
+        if dy == 1 { self.player.direction = Directions::Down; }
+        if dy == -1 { self.player.direction = Directions::Up; }
+
         let new_x = (self.player.x as i32 + dx) as usize;
         let new_y = (self.player.y as i32 + dy) as usize;
 
@@ -87,8 +111,22 @@ impl Game {
         }
     }
 
+    // the animate player method
+    fn animate_player(&mut self){
+        self.player.animation_timer += get_frame_time();  // this gives us the duration of the last frame in sec
+
+        if self.player.animation_timer > 0.1 {
+            self.player.pac_mouth = !self.player.pac_mouth; // toggling the mouth open/close
+            //timer reset
+            self.player.animation_timer = 0.0; 
+        }
+    }
+
     /// This function will contain all our per-frame logic.
     fn update(&mut self) {
+
+        self.animate_player();
+
         // Macroquad's key detection is simple and great for games.
         if is_key_pressed(KeyCode::Right) {
             self.move_player(1, 0);
@@ -126,12 +164,38 @@ impl Game {
         }
 
         // creating the player
-        draw_circle(
-            self.player.x as f32 * TILE_SIZE + TILE_SIZE / 2.0, // Center of the tile
-            self.player.y as f32 * TILE_SIZE + TILE_SIZE / 2.0, // Center of the tile
-            TILE_SIZE / 2.0 - 2.0, // Make radius slightly smaller than tile
+        let player_cen_x = self.player.x as f32 * TILE_SIZE + TILE_SIZE / 2.0;
+        let player_cen_y = self.player.y as f32 * TILE_SIZE + TILE_SIZE / 2.0;
+
+        let radius = TILE_SIZE / 2.0 - 2.0;
+
+        //rotation based on direction
+        let rotation = match self.player.direction {
+            Directions::Right => 0.0,
+            Directions::Down => 90.0,
+            Directions::Left => 180.0,
+            Directions::Up => 270.0,
+        };
+
+        // checking the mouth angle
+        let the_mouth_angle = if self.player.pac_mouth { 45.0 } else { 5.0 };
+
+        // drawing pacman using poly
+        draw_poly(
+            player_cen_x,
+            player_cen_y,
+            30,
+            radius,
+            rotation,  // the direction the pacman is facing
             YELLOW,
         );
+
+
+        // we draw the mouth by making a black triangle over the yellow circle
+        let t1 = Vec2::new(player_cen_x, player_cen_y);
+        let t2 = Vec2::from_angle(f32::to_radians(rotation - the_mouth_angle)) * (radius + 5.5) + t1;
+        let t3 = Vec2::from_angle(f32::to_radians(rotation + the_mouth_angle)) * (radius + 5.5) + t1;
+        draw_triangle(t1, t2, t3, BLACK);
 
         // draw the score text.
         draw_text(&format!("Score: {}", self.score), 20.0, 20.0, 30.0, WHITE);

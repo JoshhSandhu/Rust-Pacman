@@ -6,19 +6,26 @@ use macroquad::prelude::*;
 // This is our new bridge between the grid and pixels!
 const TILE_SIZE: f32 = 32.0;
 
-// --- Game Structures (The logic brain is almost the same) ---
+// here in the terminal version we used the crossterm crate
+// apart from that the basic game structure remains the same
 
+// player defination
 struct Player {
     x: usize,
     y: usize,
 }
 
+// the game defination
 struct Game {
     map: Vec<Vec<char>>,
     player: Player,
     score: u32,
     pellets: u32,
 }
+
+
+// the game implimentation
+// implimenting the game logic here
 
 impl Game {
     fn new() -> Self {
@@ -34,10 +41,13 @@ impl Game {
 
         let map: Vec<Vec<char>> = map_str.iter().map(|s| s.chars().collect()).collect();
 
-        // This setup logic is identical to our terminal version!
+        // logic similar to the terminal version
+        // player start pos set to 0
         let mut start_x = 0;
         let mut start_y = 0;
         let mut pellets = 0;
+
+        // loop that itterates over the map
         for (y, row) in map.iter().enumerate() {
             for (x, &char) in row.iter().enumerate() {
                 if char == 'P' {
@@ -58,14 +68,14 @@ impl Game {
         }
     }
 
-    // The core move logic is similar, but simpler.
-    // We no longer need to write 'P' into the map grid.
+    // the core move logic is similar, but simpler.
+    // we no longer need to write 'P' into the map grid.
     fn move_player(&mut self, dx: i32, dy: i32) {
         let new_x = (self.player.x as i32 + dx) as usize;
         let new_y = (self.player.y as i32 + dy) as usize;
 
         if self.map[new_y][new_x] != '#' {
-            // If we move onto a pellet, eat it.
+            // if the player and the pallet overlap the player eats the pallet
             if self.map[new_y][new_x] == '.' {
                 self.score += 10;
                 self.pellets -= 1;
@@ -95,14 +105,15 @@ impl Game {
     }
 
     /// This is our new drawing function.
+    /// we use this fn to make our map
     fn draw(&self) {
-        // 1. Clear the background to black on every frame.
+        // clear the background to black on every frame.
         clear_background(BLACK);
 
-        // 2. Draw the map by iterating through our grid.
+        // draw the map by iterating through our grid.
         for (y, row) in self.map.iter().enumerate() {
             for (x, &char) in row.iter().enumerate() {
-                // Convert grid coordinates to pixel coordinates.
+                // convert grid coordinates to pixel coordinates.
                 let pos_x = x as f32 * TILE_SIZE;
                 let pos_y = y as f32 * TILE_SIZE;
 
@@ -114,7 +125,7 @@ impl Game {
             }
         }
 
-        // 3. Draw the player on top of the map.
+        // creating the player
         draw_circle(
             self.player.x as f32 * TILE_SIZE + TILE_SIZE / 2.0, // Center of the tile
             self.player.y as f32 * TILE_SIZE + TILE_SIZE / 2.0, // Center of the tile
@@ -122,7 +133,7 @@ impl Game {
             YELLOW,
         );
 
-        // 4. Draw the score text.
+        // draw the score text.
         draw_text(&format!("Score: {}", self.score), 20.0, 20.0, 30.0, WHITE);
         
         if self.pellets == 0 {
@@ -144,7 +155,7 @@ fn window_conf() -> Conf {
     Conf {
         window_title: "Pac-Man".to_owned(),
         // We calculate the window size based on our map dimensions and tile size.
-        window_width: (20 * TILE_SIZE as i32), // map width
+        window_width: (24 * TILE_SIZE as i32), // map width
         window_height: (7 * TILE_SIZE as i32),  // map height
         ..Default::default()
     }

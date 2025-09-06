@@ -1,5 +1,5 @@
 export type PacmanGame = {
-   "address": "3HpZLCtECuB6fQHtLQUSpV5SkT41z1ES3pkZv5tak91Z",
+   "address": "GZqSBraS58kX5ad25TJHPTzchhmN4Ac3uqAVgWvd9AtH",
   "metadata": {
     "name": "pacmanGame",
     "version": "0.1.0",
@@ -154,7 +154,7 @@ export type PacmanGame = {
 };
 
 export const IDL: PacmanGame = {
-  "address": "3HpZLCtECuB6fQHtLQUSpV5SkT41z1ES3pkZv5tak91Z",
+  "address": "GZqSBraS58kX5ad25TJHPTzchhmN4Ac3uqAVgWvd9AtH",
   "metadata": {
     "name": "pacmanGame",
     "version": "0.1.0",

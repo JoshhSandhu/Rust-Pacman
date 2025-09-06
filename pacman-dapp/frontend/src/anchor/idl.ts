@@ -1,5 +1,5 @@
 export type PacmanGame = {
-    "address": "3HpZLCtECuB6fQHtLQUSpV5SkT41z1ES3pkZv5tak91Z",
+   "address": "3HpZLCtECuB6fQHtLQUSpV5SkT41z1ES3pkZv5tak91Z",
   "metadata": {
     "name": "pacmanGame",
     "version": "0.1.0",
@@ -132,6 +132,20 @@ export type PacmanGame = {
           {
             "name": "playerY",
             "type": "u8"
+          },
+          {
+            "name": "board",
+            "type": {
+              "array": [
+                {
+                  "array": [
+                    "u8",
+                    10
+                  ]
+                },
+                10
+              ]
+            }
           }
         ]
       }
@@ -140,7 +154,7 @@ export type PacmanGame = {
 };
 
 export const IDL: PacmanGame = {
-    "address": "3HpZLCtECuB6fQHtLQUSpV5SkT41z1ES3pkZv5tak91Z",
+  "address": "3HpZLCtECuB6fQHtLQUSpV5SkT41z1ES3pkZv5tak91Z",
   "metadata": {
     "name": "pacmanGame",
     "version": "0.1.0",
@@ -273,6 +287,20 @@ export const IDL: PacmanGame = {
           {
             "name": "playerY",
             "type": "u8"
+          },
+          {
+            "name": "board",
+            "type": {
+              "array": [
+                {
+                  "array": [
+                    "u8",
+                    10
+                  ]
+                },
+                10
+              ]
+            }
           }
         ]
       }

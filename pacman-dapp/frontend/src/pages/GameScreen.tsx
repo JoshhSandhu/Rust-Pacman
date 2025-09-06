@@ -14,18 +14,19 @@ const Direction = {
 };
 
 // 0 = Pellet, 1 = Wall, 2 = Empty
-const levelLayout = [
-  [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-  [1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-  [1, 0, 1, 1, 0, 0, 1, 1, 0, 1],
-  [1, 0, 0, 0, 0, 1, 0, 0, 0, 1],
-  [1, 0, 1, 0, 0, 0, 0, 1, 0, 1],
-  [1, 0, 1, 0, 0, 2, 0, 1, 0, 1],
-  [1, 0, 0, 1, 0, 0, 1, 0, 0, 1],
-  [1, 0, 1, 1, 1, 1, 1, 1, 0, 1],
-  [1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-  [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-];
+//not used anymore as the board is now stored on-chain
+// const levelLayout = [
+//   [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+//   [1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+//   [1, 0, 1, 1, 0, 0, 1, 1, 0, 1],
+//   [1, 0, 0, 0, 0, 1, 0, 0, 0, 1],
+//   [1, 0, 1, 0, 0, 0, 0, 1, 0, 1],
+//   [1, 0, 1, 0, 0, 2, 0, 1, 0, 1],
+//   [1, 0, 0, 1, 0, 0, 1, 0, 0, 1],
+//   [1, 0, 1, 1, 1, 1, 1, 1, 0, 1],
+//   [1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+//   [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+// ];
 
 const GameScreen = () => {
     const { publicKey, sendTransaction} = useWallet();
@@ -50,28 +51,28 @@ const GameScreen = () => {
         if (!gameId) return;
 
         console.log("1. Starting data fetch for game:", gameId.toBase58());
-        //set up a listner for account changes
-        const listner = program.account.gameData.subscribe(gameId, 'confirmed');
-        listner.on('change', (data) => {
+        //set up a listener for account changes
+        const listener = program.account.gameData.subscribe(gameId, 'confirmed');
+        listener.on('change', (data) => {
             console.log("Game data updated at slot", data);
             setGameData(data as GameData);
         });
 
          const fetchInitialState = async () => {
-        try {
-            console.log("2. About to call program.account.gameData.fetch()...");
-            const data = await program.account.gameData.fetch(gameId, "processed");
-            console.log("3. fetch() completed successfully! Received data:", data);
-            setGameData(data as GameData);
-        } catch (e) {
-            console.error("4. fetch() failed with an error:", e);
-        }
-    };
+            try {
+                console.log("2. About to call program.account.gameData.fetch()...");
+                const data = await program.account.gameData.fetch(gameId, "processed");
+                console.log("3. fetch() completed successfully! Received data:", data);
+                setGameData(data as GameData);
+            } catch (e) {
+                console.error("4. fetch() failed with an error:", e);
+            }
+        };
 
         fetchInitialState();
         
         return () => {
-            program.account.gameData.unsubscribe(listner);
+            program.account.gameData.unsubscribe(listener);
         };
 
     },[gameId]);
@@ -108,8 +109,13 @@ const GameScreen = () => {
                 .transaction();
 
             const signature = await sendTransaction(transaction, connection);
-            await connection.confirmTransaction(signature, "confirmed");
+            await connection.confirmTransaction(signature, "finalized");
             console.log("Move transaction successful:", signature);
+
+            const latestData = await program.account.gameData.fetch(gameId, "finalized");
+            setGameData(latestData as GameData);
+            console.log("Updated game data after move:", latestData); //update the local state after the move
+
         } catch (error) {
             console.error("Error sending move transaction:", error);
         }
@@ -120,7 +126,7 @@ const GameScreen = () => {
     const renderBoard = () => {
         if (!gameData) return <div>Loading Game...</div>;
 
-        return levelLayout.map((row, y) =>
+        return gameData.board.map((row, y) =>  //changed to take the board from the on-chain data
         row.map((cell, x) => {
             const isPlayerHere = gameData.playerX === x && gameData.playerY === y;
             let cellContent = null;

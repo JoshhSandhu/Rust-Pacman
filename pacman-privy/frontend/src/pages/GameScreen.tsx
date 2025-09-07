@@ -1,10 +1,13 @@
-import { use, useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { useWallet } from '@solana/wallet-adapter-react';
-import { PublicKey } from '@solana/web3.js';
-import { program, type GameData } from '../anchor/setup';
+import { useEffect, useState } from 'react';
+import { data, useSearchParams } from 'react-router-dom';
+import { useWallets } from '@privy-io/react-auth';
+import { Program, AnchorProvider, type IdlAccounts } from '@coral-xyz/anchor';
+import { PublicKey, Connection } from '@solana/web3.js';
 
-const BOARD_SIZE = 10;
+import { IDL, type PacmanGame } from '../anchor/idl';
+
+type GameData = IdlAccounts<PacmanGame>['gameData']; //helper type to extract the gameData account type from the IDL
+
 
 const Direction = {
     Up: 0,
@@ -13,25 +16,9 @@ const Direction = {
     Right: 3,
 };
 
-// 0 = Pellet, 1 = Wall, 2 = Empty
-//not used anymore as the board is now stored on-chain
-// const levelLayout = [
-//   [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-//   [1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-//   [1, 0, 1, 1, 0, 0, 1, 1, 0, 1],
-//   [1, 0, 0, 0, 0, 1, 0, 0, 0, 1],
-//   [1, 0, 1, 0, 0, 0, 0, 1, 0, 1],
-//   [1, 0, 1, 0, 0, 2, 0, 1, 0, 1],
-//   [1, 0, 0, 1, 0, 0, 1, 0, 0, 1],
-//   [1, 0, 1, 1, 1, 1, 1, 1, 0, 1],
-//   [1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-//   [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-// ];
-
 const GameScreen = () => {
-    const { publicKey, sendTransaction} = useWallet();
+    const { wallets } = useWallets();
     const [searchParams] = useSearchParams();
-    const connection = program.provider.connection;
 
     // a place to hold the pblic key of the surrent game PDA
     const [ gameId, setGameId ] = useState<PublicKey | null>(null);
@@ -51,31 +38,43 @@ const GameScreen = () => {
         if (!gameId) return;
 
         console.log("1. Starting data fetch for game:", gameId.toBase58());
-        //set up a listener for account changes
-        const listener = program.account.gameData.subscribe(gameId, 'confirmed');
-        listener.on('change', (data) => {
-            console.log("Game data updated at slot", data);
-            setGameData(data as GameData);
-        });
-
-         const fetchInitialState = async () => {
-            try {
-                console.log("2. About to call program.account.gameData.fetch()...");
-                const data = await program.account.gameData.fetch(gameId, "processed");
-                console.log("3. fetch() completed successfully! Received data:", data);
-                setGameData(data as GameData);
-            } catch (e) {
-                console.error("4. fetch() failed with an error:", e);
-            }
-        };
-
-        fetchInitialState();
         
-        return () => {
-            program.account.gameData.unsubscribe(listener);
-        };
+        const solanaWallet = wallets.find((wallet) => wallet.connectorType === 'embedded');
+        if (!solanaWallet) {
+            alert("Solana wallet not found. Please ensure you are logged in.");
+            return;
+        }
 
-    },[gameId]);
+        const setupListener = async () => {
+            const connection = new Connection("http://127.0.0.1.8899", "confirmed"); //seting up the connection the anchor provider inside the function
+
+            const provider = await solanaWallet.getAnchorProvider(); //getting the provider directly from the privy wallet
+
+            const program = new Program<PacmanGame>(IDL, provider); //setting up the program inside the function
+            
+            console.log("2. Setting up listener for game:", gameId.toBase58());
+
+            setGameData(data as GameData); //set the initial state
+
+            const listener = program.account.gameData.subscribe(gameId, 'confirmed');
+            listener.on('change', (data) => {
+                console.log("Game data updated at slot", data);
+                setGameData(data as GameData);
+            });
+
+            return () => {
+                program.account.gameData.unsubscribe(listener);
+                console.log("Unsubscribed from game data updates for game:", gameId.toBase58());
+            }
+
+            const cleanupPromise = setupListener();
+
+            return () => {
+                cleanupPromise.then((cleanup) => cleanup && cleanup());
+            }
+
+        }
+    },[gameId, wallets]);
 
     useEffect(() => {
         const handleKeyDown = (event: KeyboardEvent) => {
@@ -92,30 +91,30 @@ const GameScreen = () => {
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => { window.removeEventListener('keydown', handleKeyDown); };
-    }, [gameId, publicKey]); // We depend on gameId and publicKey to send the transaction
+    }, [wallets, gameId]); // We depend on gameId and publicKey to send the transaction
+
+
 
     // The updated movement function
     const movePlayer = async (direction: number) => {
-        if (!publicKey || !gameId) return;
+        const solanaWallet = wallets.find((wallet) => wallet.connectorType === 'embedded');
+        if (!solanaWallet) {
+            alert("Solana wallet not found. Please ensure you are logged in.");
+            return;
+        }
+        if (!gameId) return;
 
         try {
-            // Build the transaction for the `playerMnt` instruction
-            const transaction = await program.methods
+            const connection = new Connection("http://127.0.0.1:8899", "confirmed");
+            const provider = await solanaWallet.getAnchorProvider();
+            const program = new Program<PacmanGame>(IDL, provider);
+            
+            await program.methods
                 .playerMnt(direction)
-                .accounts({
-                    game: gameId,       // The address of the game's PDA
-                    user: publicKey,    // The player's address is also required by the program
-                })
-                .transaction();
-
-            const signature = await sendTransaction(transaction, connection);
-            await connection.confirmTransaction(signature, "finalized");
-            console.log("Move transaction successful:", signature);
-
-            const latestData = await program.account.gameData.fetch(gameId, "finalized");
-            setGameData(latestData as GameData);
-            console.log("Updated game data after move:", latestData); //update the local state after the move
-
+                .accounts({ game: gameId, user: solanaWallet.address })
+                .rpc({ commitment: "confirmed" });
+            
+            console.log("Move transaction successful!");
         } catch (error) {
             console.error("Error sending move transaction:", error);
         }

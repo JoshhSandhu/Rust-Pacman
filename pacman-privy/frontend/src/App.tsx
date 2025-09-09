@@ -16,9 +16,9 @@ const App = () => {
     //const wallets = useMemo(() => [new PhantomWalletAdapter()], []);
     const privyAppId = "cmf8pgmr9003vl40b7lh75w2s";
 
-    const handleLogin = (user) => {
-    console.log(`User ${user.id} logged in!`);
-    };
+    // const handleLogin = (user) => {
+    // console.log(`User ${user.id} logged in!`);
+    // };
 
     return (
         <PrivyProvider appId={privyAppId}

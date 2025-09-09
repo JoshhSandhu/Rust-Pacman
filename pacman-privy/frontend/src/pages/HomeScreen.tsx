@@ -1,13 +1,16 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { usePrivy } from '@privy-io/react-auth';
+import { usePrivy, useWallets } from '@privy-io/react-auth';
 
 export default function HomeScreen() {
     const navigate = useNavigate();
     const { login, authenticated } = usePrivy();
+    const { wallets } = useWallets();
+
+    console.log("Privy authenticated status:", authenticated);
     
     useEffect(() => {
-        if (authenticated) {
+        if (authenticated && wallets.length > 0) {
             navigate('/role-selector'); // Navigate to the game screen when connected
         }
     }, [authenticated, navigate]);

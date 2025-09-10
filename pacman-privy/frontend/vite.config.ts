@@ -9,4 +9,7 @@ export default defineConfig({
     // Add the node polyfills plugin here
     nodePolyfills(),
   ],
+  html: {
+    cspNonce: '__CSP_NONCE__', // Replace with your actual nonce value
+  }
 })

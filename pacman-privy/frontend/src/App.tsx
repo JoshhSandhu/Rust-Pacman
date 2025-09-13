@@ -27,31 +27,29 @@ const wallets = [new PhantomWalletAdapter()];
 const App = () => (
   <WalletProvider wallets={wallets} autoConnect>
     <PrivyProvider
-      appId="cmf8pgmr9003vl40b7lh75w2s"
+      appId="cmfihhg2f0009l10blbgk5yd3"
+      clientId='client-WY6QhsETC3Lj12ZPct7r5QYRt7hT4TYMC1KWDgZsTXpSc'
       config={{
-        loginMethods: ['email', 'google', 'wallet'],
+        loginMethods: ['wallet', 'email', 'google'],
         appearance: {
           theme: 'dark',
           accentColor: '#676FFF',
         },
         embeddedWallets: {
           createOnLogin: 'users-without-wallets',
+          noPromptOnSignature: true,
+        },
+        mfa: {
+          noPromptOnMfaRequired: false,
         },
         externalWallets: {
           solana: {
             connectors: toSolanaWalletConnectors(),
           },
         },
-        // supportedChains: [
-        //   {
-        //     id: -1,
-        //     name: 'Solana Devnet',
-        //     nativeCurrency: { name: 'Solana', symbol: 'SOL', decimals: 9 },
-        //     rpcUrls: { default: { http: ['https://api.devnet.solana.com'] } },
-        //     testnet: true,
-        //   },
-        // ],
-        solanaClusters: [{name: 'devnet', rpcUrl: 'https://api.mainnet-beta.solana.com'}]
+        // Remove supportedChains for Solana to avoid Coinbase Smart Wallet conflicts
+        // Solana is handled separately through solanaClusters
+        solanaClusters: [{name: 'devnet', rpcUrl: 'https://api.devnet.solana.com'}]
       }}
     >
       <BrowserRouter>

@@ -11,10 +11,11 @@ export default function HomeScreen() {
   useEffect(() => {
     if (!ready || !solanaReady) return;
     // Auto-navigate to role-selector if authenticated and wallet is connected
-    if (authenticated && wallets.length > 0) {
+    if (authenticated && wallets && wallets.length > 0) {
+      console.log('Navigating to role-selector, wallets:', wallets);
       navigate('/role-selector');
     }
-  }, [ready, solanaReady, authenticated, wallets.length, navigate]);
+  }, [ready, solanaReady, authenticated, wallets?.length, navigate]);
 
   if (!ready || !solanaReady) {
     return <div>Loading…</div>;
@@ -23,8 +24,10 @@ export default function HomeScreen() {
   const handleButtonClick = async () => {
     try {
       if (authenticated) {
+        console.log('Linking Solana wallet...');
         await linkWallet(); // Prompt to link a Solana wallet
       } else {
+        console.log('Initiating login...');
         await login(); // Prompt login
       }
     } catch (error) {

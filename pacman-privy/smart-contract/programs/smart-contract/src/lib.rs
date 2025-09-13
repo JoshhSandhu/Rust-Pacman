@@ -1,6 +1,7 @@
 use anchor_lang::prelude::*;
 
-declare_id!("GZqSBraS58kX5ad25TJHPTzchhmN4Ac3uqAVgWvd9AtH");
+//declare_id!("GZqSBraS58kX5ad25TJHPTzchhmN4Ac3uqAVgWvd9AtH");
+declare_id!("6mE2bt2zrKhQGSXEq5cNbiZ2MGxv6iTNzar6pdDYUwVp");  //devnet
 
 //automatically assigned unique address after build by anchor
 //this is of 8 bytes

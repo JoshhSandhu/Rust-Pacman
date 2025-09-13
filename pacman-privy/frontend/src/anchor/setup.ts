@@ -5,7 +5,7 @@ import { PROGRAM_ID } from "../constants/constants";
 import { idlAddress } from "@coral-xyz/anchor/dist/cjs/idl";
 
 
-export const connection = new Connection("http://127.0.0.1:8899", "confirmed");
+export const connection = new Connection("https://api.devnet.solana.com", "confirmed");
 
 export const program = new Program<PacmanGame>(
     IDL,

@@ -1,9 +1,18 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useSolanaWallets, useSendTransaction } from '@privy-io/react-auth';
-import { Program, type IdlAccounts } from '@coral-xyz/anchor';
+import { Program, Wallet, type IdlAccounts } from '@coral-xyz/anchor';
 import { PublicKey, Connection, Transaction } from '@solana/web3.js';
 import { IDL, type PacmanGame } from '../anchor/idl';
+
+
+// attempt to add session ids to transactions
+import { usePrivy, useWallets, useSessionSigners } from '@privy-io/react-auth';
+import { useCallback } from 'react'; // useState is already imported above
+import axios from 'axios';
+
+
+const SESSION_SIGNER_ID = import.meta.env.VITE_SESSION_SIGNER_ID; //ENSURE  the session id is deifned in your .env file
 
 // Extend window interface for Phantom wallet
 declare global {
@@ -35,6 +44,51 @@ const GameScreen = () => {
   const [localGameData, setLocalGameData] = useState<GameData | null>(null);
   const [pendingMoves, setPendingMoves] = useState<number[]>([]);
   const [isProcessingMove, setIsProcessingMove] = useState(false);
+
+  // session signer setup
+  const { login, ready, authenticated, getAccessToken } = usePrivy(); 
+  // wallets is already imported above
+  const { addSessionSigner, removeSessionSigners } = useSessionSigners();
+  const [isLoading, setIsLoading] = useState(false);
+
+  const embeddedWallets = wallets.find((wallet) => wallet.walleetClientType === 'privy' && wallet.chainType === 'solana');
+  const hasSession = embeddedWallets?.delegated === true;
+
+  //adding a session signer if not already present
+  const addSession = useCallback(async () => {
+    if ( !embeddedWallets ){
+      console.log("No embedded wallets found");
+      return;
+    }
+    try{
+        await addSessionSigner({
+          address: embeddedWallets.address,
+          signers: [{signerId: SESSION_SIGNER_ID, policyIds: []}],
+          chain: 'solana',
+        });
+        console.log("Session signer added"); 
+    } finally{
+        setIsLoading(false);
+    }
+  }, [addSessionSigner, embeddedWallets]);
+
+  //handeling the players move wrt to the session id
+  const handelPlayermove = async ( direction: number ) => {
+    if (!hasSession ||!embeddedWallets){
+      alert("No session found, please login again");
+      return;
+    }
+    try{
+      const authtoken = await getAccessToken();
+      await axios.post(
+        '/api/move',
+        { direction, walletAdress: embeddedWallets.address},
+        { headers: { Authorization: 'Bearer ${authToken}' } } 
+      );
+    }catch (err){
+        console.error("Error sending move to backend:", err);
+    }
+  };
 
   // Get gameId from URL
   useEffect(() => {

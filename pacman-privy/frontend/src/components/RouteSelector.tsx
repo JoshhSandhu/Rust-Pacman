@@ -6,7 +6,7 @@ import { IDL, type PacmanGame } from '../anchor/idl';
 import { PublicKey, SystemProgram, Connection, Transaction } from '@solana/web3.js';
 import { Buffer } from 'buffer';
 
-// Extend window interface for Phantom wallet
+//extend window interface for Phantom wallet
 declare global {
   interface Window {
     solana?: {
@@ -36,7 +36,6 @@ const RouteSelector = () => {
       const publicKey = new PublicKey(solanaWallet.address);
       const connection = new Connection("https://api.devnet.solana.com", "confirmed");
       
-      // Use the static program for building the transaction
       const program = new Program<PacmanGame>(IDL, { connection });
       
       console.log('Program ID:', program.programId.toBase58());
@@ -62,12 +61,11 @@ const RouteSelector = () => {
       
       console.log('Game PDA:', gamePda.toBase58());
       
-      // Check account space calculation
-      // GameData: score (u64=8) + player_x (u8=1) + player_y (u8=1) + board (10x10 u8=100) + discriminator (8) = 118 bytes
+      //account space calculation for debugging
       const expectedSpace = 8 + 8 + 1 + 1 + 100; // discriminator + score + player_x + player_y + board
       console.log('Expected account space:', expectedSpace, 'bytes');
 
-      // Check if game account already exists
+      //checking if account already exists
       try {
         const existingGame = await connection.getAccountInfo(gamePda);
         if (existingGame) {
@@ -80,7 +78,6 @@ const RouteSelector = () => {
         console.log('Error checking existing game:', err.message);
       }
 
-      // Building the transaction using Anchor's methods
       console.log('Building transaction...');
       const transaction = await program.methods
         .createGame()
@@ -98,14 +95,14 @@ const RouteSelector = () => {
         data: ix.data.length
       })));
       
-      // Set the fee payer and recent blockhash
+      //setting the fee payer and recent blockhash
       transaction.feePayer = publicKey;
-      const { blockhash } = await connection.getLatestBlockhash();
+      const { blockhash } = await connection.getLatestBlockhash();  //blockhash for transaction
       transaction.recentBlockhash = blockhash;
       
       console.log('Transaction built successfully');
       
-      // Simulate the transaction to catch errors early
+      //simulating the transaction before sending so that we can catch errors early
       try {
         console.log('Simulating transaction...');
         const simulation = await connection.simulateTransaction(transaction);
@@ -123,7 +120,8 @@ const RouteSelector = () => {
         return;
       }
 
-      // Sending the transaction using Privy's sendTransaction helper
+      //sending the transaction using Privy's sendTransaction
+      //this will use the wallet's signAndSendTransaction method under the hood
       console.log('Sending transaction...');
       console.log('Transaction details:', {
         recentBlockhash: transaction.recentBlockhash,
@@ -131,17 +129,15 @@ const RouteSelector = () => {
         instructions: transaction.instructions.length
       });
       
-      // Use Phantom's specific API for signing and sending transactions
+      //using phantom to sign the transaction if available
       let signature;
       if (solanaWallet.meta?.name === 'Phantom') {
-        // For Phantom wallet, use window.solana
         if (window.solana && window.solana.signAndSendTransaction) {
           signature = await window.solana.signAndSendTransaction(transaction);
         } else {
           throw new Error('Phantom wallet not found or not connected');
         }
-      } else {
-        // For other wallets, try the provider method
+      } else {  //this is for the other wallets that Privy supports
         try {
           const provider = await solanaWallet.getProvider();
           const result = await provider.request({
@@ -152,7 +148,6 @@ const RouteSelector = () => {
           });
           signature = result.signature;
         } catch (providerError) {
-          // Fallback to direct wallet methods
           signature = await solanaWallet.signAndSendTransaction(transaction);
         }
       }
@@ -178,7 +173,7 @@ const RouteSelector = () => {
         cause: error.cause
       });
       
-      // More specific error messages
+      //more user friendly error messages based on common issues
       if (error.message?.includes('Program')) {
         alert(`Program error: ${error.message}`);
       } else if (error.message?.includes('signature')) {

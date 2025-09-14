@@ -10,7 +10,7 @@ export default function HomeScreen() {
 
   useEffect(() => {
     if (!ready || !solanaReady) return;
-    // Auto-navigate to role-selector if authenticated and wallet is connected
+    //auto navigate to role selector if already authenticated
     if (authenticated && wallets && wallets.length > 0) {
       console.log('Navigating to role-selector, wallets:', wallets);
       navigate('/role-selector');
@@ -25,10 +25,10 @@ export default function HomeScreen() {
     try {
       if (authenticated) {
         console.log('Linking Solana wallet...');
-        await linkWallet(); // Prompt to link a Solana wallet
+        await linkWallet(); //linking solanana wallet
       } else {
         console.log('Initiating login...');
-        await login(); // Prompt login
+        await login(); //login or sign up
       }
     } catch (error) {
       console.error('Error during login/link:', error);

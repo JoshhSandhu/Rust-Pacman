@@ -47,8 +47,8 @@ const App = () => (
             connectors: toSolanaWalletConnectors(),
           },
         },
-        // Remove supportedChains for Solana to avoid Coinbase Smart Wallet conflicts
-        // Solana is handled separately through solanaClusters
+        //Removeing supportedChains for Solana to avoid Coinbase Smart Wallet conflicts
+        //solana is handled separately through solanaClusters
         solanaClusters: [{name: 'devnet', rpcUrl: 'https://api.devnet.solana.com'}]
       }}
     >

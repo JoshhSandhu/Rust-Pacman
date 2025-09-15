@@ -1,7 +1,7 @@
 // server/index.ts (Example backend file)
 import express from 'express';
 import { PrivyClient } from '@privy-io/server-auth';
-import { AnchorProvider, Program } from '@project-serum/anchor';
+import { AnchorProvider, Program, utils } from '@project-serum/anchor';
 import { Connection, PublicKey, Transaction } from '@solana/web3.js';
 // Import your smart contract's IDL and other necessary files
 import { IDL } from '../anchor/idl'; 
@@ -24,21 +24,23 @@ app.post('/api/move', async (req, res) => {
         const verifiedClaims = await privy.verifyAuthToken(token);
         const { direction, walletAddress } = req.body;
 
-        // 1. Set up connection to Solana and your Anchor program
+        // setting up connection to the Solana cluster
+        const wallet = { publicKey: new PublicKey(walletAddress) }; 
         const connection = new Connection(process.env.SOLANA_RPC_URL!);
         const provider = new AnchorProvider(connection, {} as any, {});
-        const program = new Program(IDL, new PublicKey('YOUR_PROGRAM_ID'), provider);
+        const program = new Program(IDL, new PublicKey('6mE2bt2zrKhQGSXEq5cNbiZ2MGxv6iTNzar6pdDYUwVp'), provider);
 
-        // 2. Create the move transaction
+        const [gamePda] = PublicKey.findProgramAddressSync(
+            [Buffer.from("game"), new PublicKey(walletAddress).toBuffer()],
+            program.programId
+        );
         const moveTx = await program.methods
             .playerMnt(direction)
             .accounts({
-                // You will need to dynamically find the game account PDA
-                // based on the user's verified Privy DID (verifiedClaims.userId)
+                game: gamePda, // Use the derived PDA
+                user: new PublicKey(walletAddress), // The user's public key
             })
             .transaction();
-        
-        // 3. Use Privy's SDK to sign and send
         const txHash = await privy.solana.sendAndConfirmTransaction({
             walletAddress: walletAddress,
             transaction: moveTx,

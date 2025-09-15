@@ -27,7 +27,7 @@ const wallets = [new PhantomWalletAdapter()];
 const App = () => (
   <WalletProvider wallets={wallets} autoConnect>
     <PrivyProvider
-      appId="cmfihhg2f0009l10blbgk5yd3"
+      appId={import.meta.env.VITE_PRIVY_APP_ID || "cmfihhg2f0009l10blbgk5yd3"}
       clientId='client-WY6QhsETC3Lj12ZPct7r5QYRt7hT4TYMC1KWDgZsTXpSc'
       config={{
         loginMethods: ['wallet', 'email', 'google'],

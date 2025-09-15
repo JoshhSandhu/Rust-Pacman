@@ -9,6 +9,14 @@ export default defineConfig({
     // Add the node polyfills plugin here
     nodePolyfills(),
   ],
+  server: {
+    proxy: {
+      '/api':{
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+      }
+    }
+  },
   html: {
     cspNonce: '__CSP_NONCE__', // Replace with your actual nonce value
   }

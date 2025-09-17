@@ -1,18 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { useSolanaWallets, useSendTransaction } from '@privy-io/react-auth';
-import { Program, Wallet, type IdlAccounts } from '@coral-xyz/anchor';
+import { useSolanaWallets, useSessionSigners, useDelegatedActions } from '@privy-io/react-auth';
+import { Program, type IdlAccounts } from '@coral-xyz/anchor';
 import { PublicKey, Connection, Transaction } from '@solana/web3.js';
 import { IDL, type PacmanGame } from '../anchor/idl';
-
-
-// attempt to add session ids to transactions
-import { usePrivy, useWallets, useSessionSigners } from '@privy-io/react-auth';
-import { useCallback } from 'react'; // useState is already imported above
-import axios from 'axios';
-
-
-const SESSION_SIGNER_ID = import.meta.env.VITE_SESSION_SIGNER_ID; //ENSURE  the session id is deifned in your .env file
 
 // Extend window interface for Phantom wallet
 declare global {
@@ -28,6 +19,9 @@ declare global {
 
 type GameData = IdlAccounts<PacmanGame>['gameData'];
 
+// Privy Session Configuration
+const SESSION_SIGNER_ID = import.meta.env.VITE_SESSION_SIGNER_ID || "tdmmibs88sdrdr1v575t51cr";
+
 const Direction = {
   Up: 0,
   Down: 1,
@@ -37,58 +31,34 @@ const Direction = {
 
 const GameScreen = () => {
   const { wallets } = useSolanaWallets();
-  const { sendTransaction } = useSendTransaction();
+  const { addSessionSigners, removeSessionSigners } = useSessionSigners();
+  const { delegateWallet } = useDelegatedActions();
   const [searchParams] = useSearchParams();
   const [gameId, setGameId] = useState<PublicKey | null>(null);
   const [gameData, setGameData] = useState<GameData | null>(null);
   const [localGameData, setLocalGameData] = useState<GameData | null>(null);
   const [pendingMoves, setPendingMoves] = useState<number[]>([]);
   const [isProcessingMove, setIsProcessingMove] = useState(false);
+  const [sessionActive, setSessionActive] = useState(false);
+  const [isCreatingSession, setIsCreatingSession] = useState(false);
 
-  // session signer setup
-  const { login, ready, authenticated, getAccessToken } = usePrivy(); 
-  // wallets is already imported above
-  const { addSessionSigner, removeSessionSigners } = useSessionSigners();
-  const [isLoading, setIsLoading] = useState(false);
+  // Check if wallet has active session
+  const embeddedWallet = wallets.find((w) => w.walletClientType === 'privy');
+  const hasActiveSession = embeddedWallet?.delegated === true;
 
-  const embeddedWallets = wallets.find((wallet) => wallet.walleetClientType === 'privy' && wallet.chainType === 'solana');
-  const hasSession = embeddedWallets?.delegated === true;
+  // Debug logging
+  console.log('🔍 Debug Info:', {
+    wallets: wallets.length,
+    embeddedWallet: embeddedWallet ? 'Found' : 'Not found',
+    sessionActive,
+    hasActiveSession,
+    SESSION_SIGNER_ID: SESSION_SIGNER_ID ? 'Set' : 'Not set'
+  });
 
-  //adding a session signer if not already present
-  const addSession = useCallback(async () => {
-    if ( !embeddedWallets ){
-      console.log("No embedded wallets found");
-      return;
-    }
-    try{
-        await addSessionSigner({
-          address: embeddedWallets.address,
-          signers: [{signerId: SESSION_SIGNER_ID, policyIds: []}],
-          chain: 'solana',
-        });
-        console.log("Session signer added"); 
-    } finally{
-        setIsLoading(false);
-    }
-  }, [addSessionSigner, embeddedWallets]);
-
-  //handeling the players move wrt to the session id
-  const handelPlayermove = async ( direction: number ) => {
-    if (!hasSession ||!embeddedWallets){
-      alert("No session found, please login again");
-      return;
-    }
-    try{
-      const authtoken = await getAccessToken();
-      await axios.post(
-        '/api/move',
-        { direction, walletAdress: embeddedWallets.address},
-        { headers: { Authorization: 'Bearer ${authToken}' } } 
-      );
-    }catch (err){
-        console.error("Error sending move to backend:", err);
-    }
-  };
+  // Update session status when wallet changes
+  useEffect(() => {
+    setSessionActive(hasActiveSession);
+  }, [hasActiveSession]);
 
   // Get gameId from URL
   useEffect(() => {
@@ -225,9 +195,57 @@ const GameScreen = () => {
     setLocalGameData(newGameData);
   };
 
-  // Batch moves and send to blockchain
+  // Create Privy session delegation for batched transactions
+  const createSession = useCallback(async () => {
+    console.log('🚀 createSession called!', {
+      sessionActive,
+      isCreatingSession,
+      embeddedWallet: embeddedWallet ? 'Found' : 'Not found',
+      SESSION_SIGNER_ID: SESSION_SIGNER_ID ? 'Set' : 'Not set'
+    });
+
+    if (sessionActive || isCreatingSession || !embeddedWallet) {
+      console.log('❌ Session creation blocked:', {
+        sessionActive,
+        isCreatingSession,
+        embeddedWallet: !!embeddedWallet
+      });
+      return;
+    }
+
+    setIsCreatingSession(true);
+    try {
+      if (!SESSION_SIGNER_ID) {
+        throw new Error('Session signer ID not configured. Please check your environment variables.');
+      }
+
+      console.log('Creating Privy session delegation...');
+      
+      // Use Privy's session delegation
+      await delegateWallet({
+        chainType: 'solana'
+      });
+
+      console.log('Privy session delegation created successfully!');
+      setSessionActive(true);
+      alert('Session created! Moves will be batched without multiple confirmations.');
+    } catch (error) {
+      console.error('Error creating session:', error);
+      alert(`Failed to create session: ${error.message || error}`);
+    } finally {
+      setIsCreatingSession(false);
+    }
+  }, [sessionActive, isCreatingSession, embeddedWallet, delegateWallet]);
+
+  // Batch moves and send to blockchain (with session delegation)
   const processPendingMoves = async () => {
     if (pendingMoves.length === 0 || isProcessingMove) return;
+
+    // If session not active, create it first
+    if (!sessionActive) {
+      await createSession();
+      return;
+    }
 
     setIsProcessingMove(true);
     const movesToProcess = [...pendingMoves];
@@ -235,14 +253,14 @@ const GameScreen = () => {
 
     try {
       const solanaWallet = wallets[0];
-      if (!solanaWallet || !gameId) {
+      if (!solanaWallet || !gameId || !embeddedWallet) {
         throw new Error('Wallet or game ID missing');
       }
 
       const connection = new Connection("https://api.devnet.solana.com", "confirmed");
       const program = new Program<PacmanGame>(IDL, { connection });
 
-      // Process moves one by one (could be optimized to batch multiple moves)
+      // Process moves one by one using delegated transactions
       for (const direction of movesToProcess) {
         const txn = await program.methods
           .playerMnt(direction)
@@ -253,29 +271,10 @@ const GameScreen = () => {
         const { blockhash } = await connection.getLatestBlockhash();
         txn.recentBlockhash = blockhash;
 
-        let signature;
-        if (solanaWallet.meta?.name === 'Phantom') {
-          if (window.solana && window.solana.signAndSendTransaction) {
-            signature = await window.solana.signAndSendTransaction(txn);
-          } else {
-            throw new Error('Phantom wallet not found');
-          }
-        } else {
-          try {
-            const provider = await solanaWallet.getProvider();
-            const result = await provider.request({
-              method: 'signAndSendTransaction',
-              params: {
-                transaction: txn.serializeMessage().toString('base64'),
-              },
-            });
-            signature = result.signature;
-          } catch (providerError) {
-            signature = await solanaWallet.signAndSendTransaction(txn);
-          }
-        }
+        // Use delegated transaction signing
+        const signature = await embeddedWallet.signAndSendTransaction(txn);
         
-        console.log('Move transaction successful:', signature);
+        console.log('Delegated move transaction successful:', signature);
       }
     } catch (error) {
       console.error('Error processing moves:', error);
@@ -332,14 +331,42 @@ const GameScreen = () => {
       <h1 className="text-3xl font-bold mb-4">Pacman Game</h1>
       <p className="mb-2 text-xs">Game PDA: {gameId?.toBase58() ?? 'Loading...'}</p>
       <p className="mb-2">Score: {(localGameData || gameData)?.score.toString() ?? '0'}</p>
-      {pendingMoves.length > 0 && (
-        <p className="mb-2 text-sm text-yellow-600">
-          Pending moves: {pendingMoves.length} {isProcessingMove && '(Processing...)'}
-        </p>
-      )}
+      
+      {/* Session Status */}
+      <div className="mb-4 flex items-center gap-4">
+        {sessionActive ? (
+          <div className="flex items-center gap-2 text-green-600">
+            <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+            <span className="text-sm">Session Active</span>
+          </div>
+        ) : (
+          <button
+            onClick={() => {
+              console.log('🔘 Create Session button clicked!');
+              createSession();
+            }}
+            disabled={isCreatingSession || !embeddedWallet}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+          >
+            {isCreatingSession ? 'Creating Session...' : 'Create Session'}
+          </button>
+        )}
+        
+        {pendingMoves.length > 0 && (
+          <p className="text-sm text-yellow-600">
+            Pending moves: {pendingMoves.length} {isProcessingMove && '(Processing...)'}
+          </p>
+        )}
+      </div>
+      
       <div className="game-board">{renderBoard()}</div>
       <p className="mt-4">Use Arrow Keys to Move</p>
-      <p className="text-sm text-gray-600">Moves are batched every 2 seconds</p>
+      <p className="text-sm text-gray-600">
+        {sessionActive 
+          ? 'Moves are batched and auto-confirmed every 2 seconds' 
+          : 'Create session to enable batched transactions'
+        }
+      </p>
     </div>
   );
 };

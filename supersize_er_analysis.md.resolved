@@ -1,0 +1,376 @@
+# Supersize-Solana: ER Architecture Excavation & Solracer Adaptation
+
+> Source: https://github.com/Lewarn00/supersize-solana/tree/main  
+> Framework: MagicBlock BOLT (Ephemeral Rollups on Solana)  
+> Engine: No game engine. React + HTML5 Canvas. Custom game loop.
+
+---
+
+## SECTION 1 — Full System Architecture
+
+### Textual Architecture Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                          CLIENT                                  │
+│   React + HTML5 Canvas                                           │
+│   App.tsx — monolithic game loop + state machine                 │
+│     - polls ER component accounts (getAccountInfo on RPC)        │
+│     - sends anchor transactions to ER endpoint (no WebSocket)    │
+│     - renders local player + all remote players from ER state    │
+└─────────────────┬────────────────────────────────────────────────┘
+                  │ Anchor txns (HTTP to ER RPC)
+                  │ getAccountInfo polls (HTTP to ER RPC)
+                  ▼
+┌─────────────────────────────────────────────────────────────────┐
+│              MAGICBLOCK EPHEMERAL ROLLUP (bolt_lang)             │
+│                                                                  │
+│   Entity Component System — on-chain programs                    │
+│                                                                  │
+│   COMPONENTS (ECS accounts, PDAs on ER):                         │
+│     Map       — game world state (delegated)                     │
+│     Player    — per-player state (delegated)                     │
+│     Section   — spatial food partitioning (delegated)            │
+│     Anteroom  — L1 financial config (NOT delegated to ER)        │
+│                                                                  │
+│   SYSTEMS (deployed programs on ER):                             │
+│     movement        — move player, consume mass on boost         │
+│     eat-food        — player absorbs food pellets                │
+│     eat-player      — collision + mass transfer between players  │
+│     spawn-player    — initialise player in world                 │
+│     spawn-food      — add food pellets to map section            │
+│     buy-in          — verify L1 deposit, set player authority    │
+│     cash-out        — verify ER state, release funds on L1       │
+│     init-map        — create Map component                       │
+│     init-anteroom   — create Anteroom component (L1)             │
+│     init-player     — create Player component PDA                │
+│     init-section    — create Section component                   │
+│     exit-game       — force-remove inactive player               │
+└─────────────────┬────────────────────────────────────────────────┘
+                  │ ER commits state proofs to Solana L1
+                  │ on cash-out/undelegation (not tick-by-tick)
+                  ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      SOLANA L1                                   │
+│   - Anteroom component (vault config, token mint, buyin limits)  │
+│   - SPL Token vault (holds all player buy-in funds)             │
+│   - buy-in system runs on L1 (real token transfer)              │
+│   - cash-out system runs on L1 (reads ER-committed player.score) │
+│   - World registry (BOLT world PDA)                             │
+└─────────────────────────────────────────────────────────────────┘
+                  │
+┌─────────────────▼────────────────────────────────────────────────┐
+│            LEADERBOARD BACKEND (Node.js / Prisma)                 │
+│   (supersize/app/leaderboard-backend/)                            │
+│   - Reads final scores from chain events off-chain               │
+│   - Stores leaderboard in Postgres via Prisma                    │
+│   - Purely advisory. No authority over game state.               │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Authority Boundaries
+
+| Layer | Authority Over |
+|---|---|
+| Solana L1 | SPL token vault, anteroom config, final settlement |
+| ER (BOLT) | All live game state: player positions, mass, score, food |
+| Client | Input only — sends transactions to ER; no authoritative state |
+| Leaderboard Backend | Advisory only — read-only score display |
+
+### Trust Boundaries
+
+| Component | Trusted? | Why |
+|---|---|---|
+| ER runtime | YES (by design) | MagicBlock ER is a trusted validator extension; programs run identically to L1 |
+| Client inputs | NO | Any player can craft transactions; systems validate `authority` field |
+| player.score on ER | YES at cash-out | L1 cash-out system reads from delegated Player PDA; correctness = ER program correctness |
+| Leaderboard backend | NO | Advisory; can be wrong without consequence |
+
+### State Ownership
+
+- **ER owns**: `Player.{x, y, mass, score, speed, target_x, target_y}`, `Map.{food_queue, total_active_buyins, next_food}`, `Section.{food[]}`
+- **L1 owns**: `Anteroom.{vault_token_account, token, min/max_buyin}`, actual SPL token balances
+- **Client owns**: Nothing. Local render state is a visual interpolation of ER-read snapshots.
+
+---
+
+## SECTION 2 — Multiplayer Mechanics
+
+### Session Creation Flow
+
+```
+1. Game owner deploys Map + Anteroom + Section components on Solana (init-map, init-anteroom, init-section)
+2. Game owner creates SPL token vault owned by PDA("token_account_owner_pda", map_pubkey)
+3. Player calls buy-in system on L1:
+   - Transfers SPL tokens from wallet → vault
+   - Sets Player.authority = player_pubkey
+   - Sets Player.payout_token_account = player ATA
+   - Sets Player.score = buyin_amount
+4. Client delegates Player and Map components to ER via BOLT delegation instruction
+5. Client calls spawn-player on ER:
+   - Sets Player.x/y (xorshift64 from slot)
+   - Sets Player.mass = start_mass
+6. Game session is live
+```
+
+### Player Matchmaking
+
+None. Supersize is a persistent lobby — anyone with a buy-in joins the live map immediately. No matchmaking queue. No session pairing. The Map component is the session.
+
+### Input Capture System
+
+- Client reads mouse position (or touch) relative to canvas center
+- On each animation frame, client derives `target_x, target_y` (screen coords → world coords)
+- Client sends an Anchor transaction to ER calling `movement::execute` with `{x, y, boost}`
+- No batching of inputs on client — each frame is a potential transaction
+- **No client-side prediction of position** — position update is the ER transaction result
+
+### Frame/Tick System
+
+- No fixed timestep. No server-side tick clock.
+- Movement is event-driven: player sends a transaction → ER executes `movement` system → updates `Player.{x, y}`
+- The ER processes transactions in its internal slot cadence (~50-400ms per transaction round-trip depending on network)
+- Other players' positions are read by polling `getAccountInfo` on their Player PDA at ~100ms intervals
+
+### Determinism Enforcement
+
+**Partial.** The simulation is NOT globally deterministic across clients. Each client independently:
+- Reads ER state (other player positions) via polling
+- Renders at its own frame rate
+- Sends its own movement transactions
+
+The ER is the single authoritative state machine. Determinism is local to the ER program execution, not distributed across clients.
+
+### State Replication Strategy
+
+**Pull-based polling.** No WebSocket. No state diff stream. Each client calls `getAccountInfo` on relevant PDAs (Player, Map, Section) at ~100ms intervals. Receives full account data blobs. Deserializes using Borsh layout matching the component struct.
+
+### Divergence Handling
+
+N/A. There is no client-authoritative simulation to diverge. All state is ER-authoritative. Clients are read-only viewers of ER state. Staleness = display lag, not divergence.
+
+### Latency Handling
+
+- Client uses its own last-sent `{target_x, target_y}` to predict own player movement locally before ER confirmation
+- Remote players rendered at last-known position (no interpolation confirmed in code)
+- High latency = slow input response, no visual compensation for remote players
+
+### Disconnect Handling
+
+- `exit-game` system: if a player has been inactive and `scheduled_removal_time` is past, any player can call `exit-game` to force-remove them
+- `Player.scheduled_removal_time` is set when player mass reaches 0
+
+### Rejoin Behavior
+
+Player component PDA is persistent per map. After being eaten (mass=0, score=0, authority=None), player can call `buy-in` again to rejoin without reinitialising the PDA.
+
+---
+
+## SECTION 3 — Ghost System
+
+**There is no ghost system in Supersize.**
+
+All players, including "remote" ones, are rendered identically from live ER account data. There is no ghost replay, no snapshot interpolation, no rollback, no dead reckoning.
+
+**How a remote player appears on screen:**
+```
+Remote player sends movement txn to ER
+  → ER updates Player.{x, y} in the delegated PDA
+  → Local client polls getAccountInfo(remote_player_pda) at ~100ms
+  → Client deserializes Player component
+  → Client renders circle at Player.{x, y}
+```
+
+Remote players are rendered at their last polled position. No interpolation between polls. No prediction. Movement appears as discrete jumps at the poll rate.
+
+**Implication for Solracer**: This is NOT the model you want for a racing game. Supersize is acceptable because blobs move slowly. A racing car cannot tolerate 100-400ms update intervals with no interpolation.
+
+---
+
+## SECTION 4 — ER Internals
+
+### How ER Sessions Are Instantiated
+
+MagicBlock ER uses **account delegation**. Selected Solana accounts (PDAs) are "delegated" to the ER network:
+1. Owner calls `delegate` instruction on the account
+2. The account is locked on L1 (writes disabled)
+3. A copy is created on ER with full write access
+4. ER programs (systems) can now mutate the account at ER speed
+
+For Supersize: `Map` and [Player](file:///d:/mislanious/Unity/Uinty_projects/Solracer/backend-ts/src/types.ts#102-109) components are delegated. `Anteroom` is NOT — it stays on L1 because it holds vault config (immutable during game).
+
+### What Data Is Stored in ER State
+
+Each delegated account is a Borsh-serialized BOLT component struct:
+
+```
+Player: { name, authority, map, buy_in, payout_token_account,
+          current_game_wallet_balance, tax, join_time, x, y, 
+          target_x, target_y, score, mass, speed, 
+          scheduled_removal_time, boost_click_time }
+
+Map: { name, authority, width, height, base_buyin, max_buyin,
+       min_buyin, max_players, total_active_buyins, 
+       total_food_on_map, food_queue, next_food, frozen }
+```
+
+### How State Transitions Are Committed
+
+- Each system call is an Anchor instruction submitted as a transaction to the ER RPC
+- ER processes it immediately (no sequencer delay per MagicBlock docs)  
+- Account data is mutated atomically per transaction
+- State is committed to L1 only on **undelegation** (i.e., when cash-out is called)
+
+### How Batching Works
+
+No explicit batching in the client code. Each movement input is a single transaction. ER handles transaction ordering and execution at its native slot rate.
+
+### State Serialization
+
+Standard Borsh encoding matching Anchor account layout. Same as Solana L1. Clients use Anchor IDL to deserialize component data.
+
+### How ER Submits to Solana
+
+On `cash-out`:
+1. Player calls cash-out system — this runs on **L1** (not ER)
+2. Before it can run, the ER must have committed the Player PDA's final state back to L1 (undelegation)
+3. cash-out reads `player.score` (the ER-committed value) to determine payout amount
+4. Executes SPL token transfer from vault to player
+
+### Whether ER Submits Full State, Diffs, or Commitments
+
+Full account state is submitted on undelegation. Not diffs. Not ZK commitments. The ER is a trusted validator extension — it does not produce cryptographic proofs. It relies on the MagicBlock validator's honest execution guarantee.
+
+### Rollback / Re-execution
+
+Not implemented. If an ER transaction fails, the client retries. There is no client-side rollback or re-simulation.
+
+### How ER Enforces Correctness
+
+The BOLT framework enforces constraints inside system programs:
+- `require!(player.authority == Some(authority))` — only the authorized wallet can move their player
+- `require!(player.mass != 0)` — cannot interact if not in game
+- `require!(map.key() == player.map)` — cannot interact with wrong map
+- Collision detection is done inside `eat-player` system on-chain — no client verification
+
+---
+
+## SECTION 5 — On-Chain Integration
+
+### Program IDs
+
+| Program | ID |
+|---|---|
+| movement | `9rthxrCfneJKfPtv8PQmYk7hGQsUfeyeDKRp3uC4Uwh6` |
+| buy-in | `CLC46PuyXnSuZGmUrqkFbAh7WwzQm8aBPjSQ3HMP56kp` |
+| cash-out | `BAP315i1xoAXqbJcTT1LrUS45N3tAQnNnPuNQkCcvbAr` |
+| eat-player | `F6rDhVKjVTdGKdxEK9UWfFDcxeT3vFbAckX6U2aWeEKZ` |
+| spawn-player | `DViN676ajvuWryjWHxk2EF7MvQLgHNqhj4m32p1xLBDB` |
+| Player component | `2ewyq31Atu7yLcYMg51CEa22HmcCSJwM4jjHH8kKVAJw` |
+| Map component | `2dZ5DLJhEVFRA5xRnRD779ojsWsf3HMi6YB1zmVDdsYb` |
+| Anteroom component | `EbGkJPaMY8XCJCNjkWwk971xzE32X5LBPg5s2g4LDYcW` |
+
+### IDL Usage
+
+Standard Anchor IDL. Client uses `@coral-xyz/anchor` to deserialize component account data and build system-call transactions.
+
+### Instruction Builders
+
+Anchor-generated. The BOLT framework produces IDL from `#[system]` and `#[component]` macros. Client calls `program.methods.execute(args).accounts({...}).rpc()`.
+
+### Transaction Submission Timing
+
+- **buy-in**: L1, called before game entry. Submitted once.
+- **spawn-player**: ER, called after delegation. Submitted once per entry.
+- **movement**: ER, called per input frame. Highest frequency.
+- **eat-player**: ER, called by the eating player when collision detected client-side.
+- **cash-out**: L1, called on exit. Submitted once.
+
+### Settlement Logic
+
+`cash-out/src/lib.rs`:
+1. Reads `player.score` from the undelegated Player PDA (ER state committed to L1)
+2. Calculates splits: `~98% player, ~1% game owner, ~1% supersize, variable referrer`
+3. Executes 3-4 SPL Transfer CPIs from vault PDA to each recipient
+4. Payout amount is denominated in the game's SPL token (not necessarily SOL)
+
+### Anti-Cheat Enforcement
+
+- `eat-player`: validates `player.authority == authority` (signed by actual player wallet)
+- `eat-player`: 5-second spawn invincibility via `join_time` check
+- `eat-player`: mass ratio check: `player_mass > player2.mass * 0.105` (must be meaningfully larger)
+- `movement`: validates `player.authority == authority`
+- `cash-out`: validates `player.payout_token_account` (set at buy-in, cannot be changed mid-game)
+
+### Replay Prevention
+
+Solana nonce/slot-based transaction expiry inherently prevents replay. No custom nonce tracking.
+
+### Trust Model Summary
+
+```
+Chain trusts ER:     YES — ER is a trusted validator extension, not a ZK system
+Chain verifies:      player.score value at cash-out (reads delegated PDA after undelegation)
+Chain does NOT:      recompute game physics, verify movement paths, verify collision history
+Chain verifies:      vault ownership PDA derivation, token mint, player payout account
+ER verifies:         authority signature on every system call
+ER does NOT:         prevent a player from sending fabricated {x, y} coordinates
+```
+
+**Critical flaw**: `movement` accepts any `{target_x, target_y}` as input. A cheating client can teleport their target by sending arbitrary coordinates. The server-side physics just computes movement toward target. However, `eat-player` requires proximity — so teleporting target doesn't immediately let you eat someone; you still need your actual `player.x/y` to be near them, which updates only via physics step. This is weak anti-cheat but sufficient for a casual game.
+
+---
+
+## SECTION 6 — Determinism Analysis
+
+### Is the Simulation Deterministic?
+
+**No.** The simulation is not deterministic across clients. Each client renders an independent view derived from ER account polling.
+
+### RNG Seed Management
+
+`xorshift64(slot)` is used for:
+- `spawn-player`: initial `x`, `y` position
+- `movement` (boost): food spawn positions around player
+
+Slot number is used as RNG seed, making RNG deterministic within each ER execution but not reproducible from client input logs alone.
+
+### Physics Determinism
+
+- Movement uses `f64` floating point arithmetic on-chain (predictable within a single execution)
+- No cross-client physics — each client's view is independent
+- Mass/speed calculations use `f64` consistently, no integer physics
+
+### Fixed Timestep
+
+No. The game runs at wall-clock time. Movement speed is based on `player.speed` field, applied each time a `movement` transaction is processed. No tick accumulator, no fixed timestep.
+
+### Floating Point Drift
+
+Not a concern. All physics runs on-chain (deterministic per execution), not across multiple clients doing the same simulation.
+
+### How Correctness Is Preserved Without Full Determinism
+
+The ER is the single source of truth. Clients do not simulate — they read. There is no simulation to drift. Consistency is guaranteed by on-chain execution, not by client-side determinism.
+
+---
+
+## SECTION 7 — Security Model
+
+| Threat | Mitigation | Strength |
+|---|---|---|
+| Client sends wrong player position | `movement` accepts target, not teleport — physics limits actual movement per tx | Weak — can rapid-fire txns |
+| Player eats another without being close | `eat-player` verifies proximity via `player.x/y` on-chain | Strong |
+| Player cashes out more than earned | `cash-out` reads `player.score` from ER PDA | Strong (trusts ER) |
+| Player replays a cash-out | SPL transfer fails if vault insufficient; `player.score` is zeroed after cash-out | Strong |
+| Player changes payout address | `payout_token_account` set at buy-in, validated at cash-out | Strong |
+| Fake buy-in without paying | `buy-in` requires actual SPL transfer via Anchor CPI | Strong |
+| ER operator tampers state | Trust model: MagicBlock validator is assumed honest | Weak (trusted ER) |
+| Client fabricates eat-player | `eat-player` checks mass ratio and proximity in on-chain program | Strong |
+| Spawn position manipulation | `spawn-player` uses `xorshift64(slot)` — slot not predictable by client | Moderate |
+| Force-exit griefing | `exit-game` requires `scheduled_removal_time` to be past | Moderate |
+
+**Overall security assessment**: Sufficient for a game where the stakes are small buy-ins. The ER trust model is the largest structural vulnerability — MagicBlock is not trustless. For high-value settlements this is a significant assumption.
+
+---
+

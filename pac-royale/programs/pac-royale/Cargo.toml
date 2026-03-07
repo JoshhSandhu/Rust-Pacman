@@ -1,0 +1,20 @@
+[package]
+name = "pac-royale"
+version = "0.1.0"
+description = "Pac-Royale: Endless Pac-Man on Ephemeral Rollups"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "pac_royale"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+idl-build = ["anchor-lang/idl-build"]
+
+[dependencies]
+anchor-lang = "0.31.1"

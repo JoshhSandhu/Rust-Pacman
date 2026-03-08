@@ -1,7 +1,7 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
 import { PacRoyale } from "../target/types/pac_royale";
-import { Keypair, PublicKey } from "@solana/web3.js";
+import { PublicKey } from "@solana/web3.js";
 import { createPacRoyaleClient } from "../sdk/client";
 import * as fs from "fs";
 
@@ -42,9 +42,14 @@ async function main() {
   console.log("Anteroom PDA:", anteroomPda.toBase58());
   console.log();
 
-  // Create vault keypair (in production, this would be a proper vault)
-  const vaultKeypair = Keypair.generate();
-  console.log("Vault:", vaultKeypair.publicKey.toBase58());
+  const vaultEnv = process.env.PAC_ROYALE_VAULT_PUBKEY;
+  if (!vaultEnv) {
+    throw new Error(
+      "PAC_ROYALE_VAULT_PUBKEY is required. Use a deterministic funded vault account."
+    );
+  }
+  const vaultPubkey = new PublicKey(vaultEnv);
+  console.log("Vault:", vaultPubkey.toBase58());
   console.log();
 
   // Check if world already exists
@@ -60,7 +65,7 @@ async function main() {
     console.log("📝 Step 1: Initializing World...");
     try {
       const worldName = "Pac-Royale Arena";
-      const tx = await client.initWorld(authority, vaultKeypair.publicKey, worldName);
+      const tx = await client.initWorld(authority, vaultPubkey, worldName);
       console.log("✅ World initialized!");
       console.log("Transaction:", tx);
       console.log();
@@ -130,7 +135,7 @@ async function main() {
   console.log("=======================");
   console.log("World:", worldPda.toBase58());
   console.log("Anteroom:", anteroomPda.toBase58());
-  console.log("Vault:", vaultKeypair.publicKey.toBase58());
+  console.log("Vault:", vaultPubkey.toBase58());
   console.log("Chunks initialized:", chunksInitialized);
   console.log("Ghosts initialized:", ghostsInitialized);
   console.log("Total players:", world.totalPlayers);
@@ -142,8 +147,7 @@ async function main() {
     network: provider.connection.rpcEndpoint,
     world: worldPda.toBase58(),
     anteroom: anteroomPda.toBase58(),
-    vault: vaultKeypair.publicKey.toBase58(),
-    vaultSecretKey: Array.from(vaultKeypair.secretKey),
+    vault: vaultPubkey.toBase58(),
     authority: authority.toBase58(),
     chunksInitialized,
     ghostsInitialized,

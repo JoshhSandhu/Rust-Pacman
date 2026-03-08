@@ -74,7 +74,7 @@ describe("pac-royale", () => {
   describe("Chunk Initialization", () => {
     it("Initializes chunks 0-31 with different templates", async () => {
       const numChunks = 32;
-      const numTemplates = 30;
+      const numTemplates = 5;
 
       for (let i = 0; i < numChunks; i++) {
         const physicalIndex = i;
@@ -190,6 +190,22 @@ describe("pac-royale", () => {
         [Buffer.from("chunk"), worldPda.toBuffer(), Buffer.from([16])],
         program.programId
       );
+      const [ghost0Pda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("ghost"), worldPda.toBuffer(), Buffer.from([0])],
+        program.programId
+      );
+      const [ghost1Pda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("ghost"), worldPda.toBuffer(), Buffer.from([1])],
+        program.programId
+      );
+      const [ghost2Pda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("ghost"), worldPda.toBuffer(), Buffer.from([2])],
+        program.programId
+      );
+      const [ghost3Pda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("ghost"), worldPda.toBuffer(), Buffer.from([3])],
+        program.programId
+      );
 
       // Move right (direction 3)
       const tx = await program.methods
@@ -199,6 +215,10 @@ describe("pac-royale", () => {
           player: player1Pda,
           chunk: chunkPda,
           authority: authority.publicKey,
+          ghost0: ghost0Pda,
+          ghost1: ghost1Pda,
+          ghost2: ghost2Pda,
+          ghost3: ghost3Pda,
         })
         .rpc();
 

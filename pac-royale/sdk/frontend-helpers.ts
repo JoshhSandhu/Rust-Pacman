@@ -102,9 +102,10 @@ export async function fetchGameState(
       direction: ghost.direction,
     })),
     otherPlayers: allPlayers
-      .filter((p) => !p.authority.equals(playerAuthority))
+      .map((entry) => entry.account)
+      .filter((p) => p.authority && !p.authority.equals(playerAuthority))
       .map((p) => ({
-        authority: p.authority.toBase58(),
+        authority: p.authority!.toBase58(),
         position: {
           chunkIndex: p.chunkIndex,
           rowInChunk: p.rowInChunk,
@@ -170,7 +171,9 @@ export function getCellAt(
   col: number,
   scrollOffset: number
 ): number {
-  const physicalIndex = (chunkIndex - scrollOffset) % CONSTANTS.MAX_CHUNKS;
+  const physicalIndex =
+    ((chunkIndex - scrollOffset) % CONSTANTS.MAX_CHUNKS + CONSTANTS.MAX_CHUNKS) %
+    CONSTANTS.MAX_CHUNKS;
   const chunk = chunks.find((c) => c.physicalIndex === physicalIndex);
   
   if (!chunk || row < 0 || row >= CONSTANTS.CHUNK_ROWS || col < 0 || col >= CONSTANTS.CHUNK_COLS) {
@@ -318,7 +321,7 @@ export function createGameLoop(
   client: PacRoyaleClient,
   playerAuthority: PublicKey,
   onUpdate: (state: GameState) => void,
-  intervalMs: number = 100
+  intervalMs: number = 350
 ): () => void {
   let running = true;
 

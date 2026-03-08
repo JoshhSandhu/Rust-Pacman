@@ -110,6 +110,7 @@ export interface GameStore {
   triggerScreenFlash: (color: string) => void;
   addOtherPlayer: (key: string, player: PlayerState) => void;
   removeOtherPlayer: (key: string) => void;
+  setOtherPlayers: (players: Map<string, PlayerState>) => void;
 }
 
 let popupIdCounter = 0;
@@ -203,4 +204,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
       next.delete(key);
       return { otherPlayers: next };
     }),
+
+  setOtherPlayers: (players) => set({ otherPlayers: players }),
 }));

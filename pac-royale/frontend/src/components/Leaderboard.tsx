@@ -4,10 +4,26 @@ export default function Leaderboard() {
   const player = useGameStore((s) => s.player);
   const world = useGameStore((s) => s.world);
   const connected = useGameStore((s) => s.connected);
+  const otherPlayers = useGameStore((s) => s.otherPlayers);
 
   if (!connected || !world) return null;
 
-  const balanceSol = player ? (player.balanceLamports / 1_000_000_000).toFixed(4) : '0.0000';
+  const boardEntries = [
+    {
+      rankKey: 'you',
+      name: 'YOU',
+      balanceLamports: player?.balanceLamports ?? 0,
+      you: true,
+    },
+    ...Array.from(otherPlayers.entries()).map(([key, value]) => ({
+      rankKey: key,
+      name: key.slice(0, 4).toUpperCase(),
+      balanceLamports: value.balanceLamports,
+      you: false,
+    })),
+  ]
+    .sort((a, b) => b.balanceLamports - a.balanceLamports)
+    .slice(0, 5);
 
   return (
     <div className="absolute top-20 right-4 z-20 w-56">
@@ -17,35 +33,34 @@ export default function Leaderboard() {
         </h2>
 
         <div className="space-y-2">
-          {/* Current player entry */}
-          <div className="flex items-center justify-between bg-pac-yellow/10 border border-pac-yellow/20 rounded px-2 py-1.5">
-            <div className="flex items-center gap-2">
-              <span className="font-arcade text-[8px] text-pac-yellow">1</span>
-              <span className="font-arcade text-[8px] text-pac-yellow">YOU</span>
-            </div>
-            <span className="font-arcade text-[8px] text-pac-yellow">
-              {balanceSol}
-            </span>
-          </div>
-
-          {/* Placeholder entries for demo */}
-          {[
-            { rank: 2, name: 'GH0ST', score: '0.0120', color: 'text-ghost-cyan' },
-            { rank: 3, name: 'BLINK', score: '0.0085', color: 'text-ghost-red' },
-            { rank: 4, name: 'PINKY', score: '0.0042', color: 'text-ghost-pink' },
-            { rank: 5, name: 'CLYDE', score: '0.0018', color: 'text-ghost-orange' },
-          ].map((entry) => (
-            <div
-              key={entry.rank}
-              className="flex items-center justify-between px-2 py-1 opacity-40"
-            >
-              <div className="flex items-center gap-2">
-                <span className="font-arcade text-[8px] text-gray-500">{entry.rank}</span>
-                <span className={`font-arcade text-[8px] ${entry.color}`}>{entry.name}</span>
+          {boardEntries.map((entry, index) => {
+            const score = (entry.balanceLamports / 1_000_000_000).toFixed(4);
+            return (
+              <div
+                key={entry.rankKey}
+                className={
+                  entry.you
+                    ? 'flex items-center justify-between bg-pac-yellow/10 border border-pac-yellow/20 rounded px-2 py-1.5'
+                    : 'flex items-center justify-between px-2 py-1 opacity-70'
+                }
+              >
+                <div className="flex items-center gap-2">
+                  <span className={entry.you ? 'font-arcade text-[8px] text-pac-yellow' : 'font-arcade text-[8px] text-gray-500'}>
+                    {index + 1}
+                  </span>
+                  <span className={entry.you ? 'font-arcade text-[8px] text-pac-yellow' : 'font-arcade text-[8px] text-neon-green'}>
+                    {entry.name}
+                  </span>
+                </div>
+                <span className={entry.you ? 'font-arcade text-[8px] text-pac-yellow' : 'font-arcade text-[8px] text-gray-400'}>
+                  {score}
+                </span>
               </div>
-              <span className="font-arcade text-[8px] text-gray-500">{entry.score}</span>
-            </div>
-          ))}
+            );
+          })}
+          {boardEntries.length === 1 && (
+            <p className="font-arcade text-[7px] text-gray-600 text-center py-1">WAITING FOR OTHERS</p>
+          )}
         </div>
 
         {/* Stats */}

@@ -1,7 +1,65 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program, BN } from "@coral-xyz/anchor";
 import { PacRoyale } from "../target/types/pac_royale";
-import { PublicKey, Keypair, SystemProgram, Connection } from "@solana/web3.js";
+import { PublicKey, SystemProgram, Connection } from "@solana/web3.js";
+
+export interface WorldAccount {
+  authority: PublicKey;
+  name: number[];
+  chunkCount: number;
+  scrollOffset: number;
+  nextScrollSlot: BN;
+  totalPlayers: number;
+  frozen: boolean;
+  chaseTarget: PublicKey | null;
+  bump: number;
+}
+
+export interface PlayerAccount {
+  authority: PublicKey | null;
+  world: PublicKey;
+  payoutWallet: PublicKey;
+  chunkIndex: number;
+  rowInChunk: number;
+  col: number;
+  direction: number;
+  balanceLamports: BN;
+  powerPelletUntilSlot: BN;
+  lastMoveSlot: BN;
+  bump: number;
+  dead: boolean;
+}
+
+export interface ChunkAccount {
+  world: PublicKey;
+  physicalIndex: number;
+  logicalIndex: number;
+  templateId: number;
+  grid: number[][];
+}
+
+export interface GhostAccount {
+  world: PublicKey;
+  ghostId: number;
+  chunkIndex: number;
+  row: number;
+  col: number;
+  state: number;
+  direction: number;
+  bump: number;
+}
+
+export interface AnteroomAccount {
+  world: PublicKey;
+  authority: PublicKey;
+  vault: PublicKey;
+  bump: number;
+}
+
+export interface ProgramAccountResult<T> {
+  publicKey: PublicKey;
+  account: T;
+}
 
 /**
  * PacRoyaleClient - TypeScript SDK for interacting with the Pac-Royale program
@@ -11,6 +69,10 @@ export class PacRoyaleClient {
     public program: Program<PacRoyale>,
     public connection: Connection
   ) {}
+
+  private normalizeModulo(value: number, modulus: number): number {
+    return ((value % modulus) + modulus) % modulus;
+  }
 
   /**
    * Derive World PDA
@@ -116,7 +178,7 @@ export class PacRoyaleClient {
   async initAllChunks(authority: PublicKey): Promise<string[]> {
     const signatures: string[] = [];
     const numChunks = 32;
-    const numTemplates = 30;
+    const numTemplates = CONSTANTS.NUM_CHUNK_TEMPLATES;
 
     for (let i = 0; i < numChunks; i++) {
       const templateId = i % numTemplates;
@@ -196,11 +258,19 @@ export class PacRoyaleClient {
     const [playerPda] = this.getPlayerPda(worldPda, authority);
 
     // Get player to determine chunk
-    const player = await this.program.account.player.fetch(playerPda);
-    const world = await this.program.account.world.fetch(worldPda);
-    
-    const physicalIndex = (player.chunkIndex - world.scrollOffset) % 32;
+    const [player, world] = await Promise.all([
+      this.program.account.player.fetch(playerPda) as Promise<PlayerAccount>,
+      this.program.account.world.fetch(worldPda) as Promise<WorldAccount>,
+    ]);
+
+    const physicalIndex = this.normalizeModulo(
+      player.chunkIndex - world.scrollOffset,
+      CONSTANTS.MAX_CHUNKS
+    );
     const [chunkPda] = this.getChunkPda(worldPda, physicalIndex);
+    const fallbackGhostPdas = [0, 1, 2, 3].map((ghostId) => this.getGhostPda(worldPda, ghostId)[0]);
+    const [ghost0, ghost1, ghost2, ghost3] =
+      ghostPdas.length === 4 ? ghostPdas : fallbackGhostPdas;
 
     return await this.program.methods
       .movement(direction)
@@ -209,14 +279,11 @@ export class PacRoyaleClient {
         player: playerPda,
         chunk: chunkPda,
         authority,
+        ghost0,
+        ghost1,
+        ghost2,
+        ghost3,
       })
-      .remainingAccounts(
-        ghostPdas.map(pubkey => ({
-          pubkey,
-          isSigner: false,
-          isWritable: true,
-        }))
-      )
       .rpc();
   }
 
@@ -227,10 +294,15 @@ export class PacRoyaleClient {
     const [worldPda] = this.getWorldPda();
     const [playerPda] = this.getPlayerPda(worldPda, authority);
 
-    const player = await this.program.account.player.fetch(playerPda);
-    const world = await this.program.account.world.fetch(worldPda);
-    
-    const physicalIndex = (player.chunkIndex - world.scrollOffset) % 32;
+    const [player, world] = await Promise.all([
+      this.program.account.player.fetch(playerPda) as Promise<PlayerAccount>,
+      this.program.account.world.fetch(worldPda) as Promise<WorldAccount>,
+    ]);
+
+    const physicalIndex = this.normalizeModulo(
+      player.chunkIndex - world.scrollOffset,
+      CONSTANTS.MAX_CHUNKS
+    );
     const [chunkPda] = this.getChunkPda(worldPda, physicalIndex);
 
     return await this.program.methods
@@ -291,7 +363,7 @@ export class PacRoyaleClient {
    */
   async scrollMap(authority: PublicKey): Promise<string> {
     const [worldPda] = this.getWorldPda();
-    const world = await this.program.account.world.fetch(worldPda);
+    const world = await this.program.account.world.fetch(worldPda) as WorldAccount;
 
     const bottomPhysicalIndex = world.scrollOffset % 32;
     const [chunkPda] = this.getChunkPda(worldPda, bottomPhysicalIndex);
@@ -353,75 +425,101 @@ export class PacRoyaleClient {
   /**
    * Fetch world account
    */
-  async fetchWorld(): Promise<any> {
+  async fetchWorld(): Promise<WorldAccount> {
     const [worldPda] = this.getWorldPda();
-    return await this.program.account.world.fetch(worldPda);
+    return await this.program.account.world.fetch(worldPda) as WorldAccount;
   }
 
   /**
    * Fetch player account
    */
-  async fetchPlayer(authority: PublicKey): Promise<any> {
+  async fetchPlayer(authority: PublicKey): Promise<PlayerAccount> {
     const [worldPda] = this.getWorldPda();
     const [playerPda] = this.getPlayerPda(worldPda, authority);
-    return await this.program.account.player.fetch(playerPda);
+    return await this.program.account.player.fetch(playerPda) as PlayerAccount;
   }
 
   /**
    * Fetch all players
    */
-  async fetchAllPlayers(): Promise<any[]> {
-    return await this.program.account.player.all();
+  async fetchAllPlayers(): Promise<ProgramAccountResult<PlayerAccount>[]> {
+    return await this.program.account.player.all() as ProgramAccountResult<PlayerAccount>[];
   }
 
   /**
    * Fetch chunk account
    */
-  async fetchChunk(physicalIndex: number): Promise<any> {
+  async fetchChunk(physicalIndex: number): Promise<ChunkAccount> {
     const [worldPda] = this.getWorldPda();
     const [chunkPda] = this.getChunkPda(worldPda, physicalIndex);
-    return await this.program.account.chunk.fetch(chunkPda);
+    return await this.program.account.chunk.fetch(chunkPda) as ChunkAccount;
+  }
+
+  async fetchChunksByPhysicalIndices(
+    physicalIndices: number[]
+  ): Promise<Array<{ physicalIndex: number; chunk: ChunkAccount }>> {
+    const [worldPda] = this.getWorldPda();
+    const chunkPdas = physicalIndices.map((index) => this.getChunkPda(worldPda, index)[0]);
+    const accounts = await this.program.account.chunk.fetchMultiple(chunkPdas);
+
+    const results: Array<{ physicalIndex: number; chunk: ChunkAccount }> = [];
+    accounts.forEach((account: any, idx: number) => {
+      if (!account) return;
+      results.push({
+        physicalIndex: physicalIndices[idx],
+        chunk: account as ChunkAccount,
+      });
+    });
+
+    return results;
   }
 
   /**
    * Fetch all chunks
    */
-  async fetchAllChunks(): Promise<any[]> {
-    const chunks = [];
-    for (let i = 0; i < 32; i++) {
-      try {
-        const chunk = await this.fetchChunk(i);
-        chunks.push(chunk);
-      } catch (err) {
-        // Chunk not initialized yet
-      }
-    }
-    return chunks;
+  async fetchAllChunks(): Promise<ChunkAccount[]> {
+    const physicalIndices = Array.from(
+      { length: CONSTANTS.MAX_CHUNKS },
+      (_, i) => i
+    );
+    const batched = await this.fetchChunksByPhysicalIndices(physicalIndices);
+    return batched.map(({ chunk }) => chunk);
   }
 
   /**
    * Fetch ghost account
    */
-  async fetchGhost(ghostId: number): Promise<any> {
+  async fetchGhost(ghostId: number): Promise<GhostAccount> {
     const [worldPda] = this.getWorldPda();
     const [ghostPda] = this.getGhostPda(worldPda, ghostId);
-    return await this.program.account.ghost.fetch(ghostPda);
+    return await this.program.account.ghost.fetch(ghostPda) as GhostAccount;
+  }
+
+  async fetchGhostsByIds(
+    ghostIds: number[]
+  ): Promise<Array<{ ghostId: number; ghost: GhostAccount }>> {
+    const [worldPda] = this.getWorldPda();
+    const ghostPdas = ghostIds.map((ghostId) => this.getGhostPda(worldPda, ghostId)[0]);
+    const accounts = await this.program.account.ghost.fetchMultiple(ghostPdas);
+
+    const results: Array<{ ghostId: number; ghost: GhostAccount }> = [];
+    accounts.forEach((account: any, idx: number) => {
+      if (!account) return;
+      results.push({
+        ghostId: ghostIds[idx],
+        ghost: account as GhostAccount,
+      });
+    });
+    return results;
   }
 
   /**
    * Fetch all ghosts
    */
-  async fetchAllGhosts(): Promise<any[]> {
-    const ghosts = [];
-    for (let i = 0; i < 4; i++) {
-      try {
-        const ghost = await this.fetchGhost(i);
-        ghosts.push(ghost);
-      } catch (err) {
-        // Ghost not initialized yet
-      }
-    }
-    return ghosts;
+  async fetchAllGhosts(): Promise<GhostAccount[]> {
+    const ghostIds = Array.from({ length: CONSTANTS.NUM_GHOSTS }, (_, i) => i);
+    const batched = await this.fetchGhostsByIds(ghostIds);
+    return batched.map(({ ghost }) => ghost);
   }
 
   /**
@@ -429,7 +527,7 @@ export class PacRoyaleClient {
    */
   subscribeToPlayer(
     authority: PublicKey,
-    callback: (player: any) => void
+    callback: (player: PlayerAccount) => void
   ): number {
     const [worldPda] = this.getWorldPda();
     const [playerPda] = this.getPlayerPda(worldPda, authority);
@@ -440,7 +538,7 @@ export class PacRoyaleClient {
         const player = this.program.coder.accounts.decode(
           "player",
           accountInfo.data
-        );
+        ) as PlayerAccount;
         callback(player);
       },
       "confirmed"
@@ -450,7 +548,7 @@ export class PacRoyaleClient {
   /**
    * Subscribe to world account changes
    */
-  subscribeToWorld(callback: (world: any) => void): number {
+  subscribeToWorld(callback: (world: WorldAccount) => void): number {
     const [worldPda] = this.getWorldPda();
 
     return this.connection.onAccountChange(
@@ -459,7 +557,7 @@ export class PacRoyaleClient {
         const world = this.program.coder.accounts.decode(
           "world",
           accountInfo.data
-        );
+        ) as WorldAccount;
         callback(world);
       },
       "confirmed"
@@ -479,7 +577,10 @@ export class PacRoyaleClient {
   async getPlayerChunkGrid(authority: PublicKey): Promise<number[][]> {
     const player = await this.fetchPlayer(authority);
     const world = await this.fetchWorld();
-    const physicalIndex = (player.chunkIndex - world.scrollOffset) % 32;
+    const physicalIndex = this.normalizeModulo(
+      player.chunkIndex - world.scrollOffset,
+      CONSTANTS.MAX_CHUNKS
+    );
     const chunk = await this.fetchChunk(physicalIndex);
     return chunk.grid;
   }
@@ -520,7 +621,7 @@ export const CONSTANTS = {
   LAMPORTS_PER_GHOST_KILL: 10_000_000,
   CHUNK_ROWS: 6,
   CHUNK_COLS: 10,
-  NUM_CHUNK_TEMPLATES: 30,
+  NUM_CHUNK_TEMPLATES: 5,
   MAX_CHUNKS: 32,
   POWER_PELLET_DURATION_SLOTS: 200,
   NUM_GHOSTS: 4,

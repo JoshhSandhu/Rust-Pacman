@@ -19,7 +19,7 @@ const KEY_MAP: Record<string, DirectionKey> = {
   D: DIR_RIGHT,
 };
 
-const MOVE_DEBOUNCE_MS = 180;
+const MOVE_DEBOUNCE_MS = 320;
 
 let lastMoveTime = 0;
 let keydownHandler: ((e: KeyboardEvent) => void) | null = null;
@@ -34,6 +34,7 @@ export function initControls(onMove: MoveCallback): void {
     const dir = KEY_MAP[e.key];
     if (dir === undefined) return;
     e.preventDefault();
+    if (e.repeat) return;
 
     const store = useGameStore.getState();
     if (!store.gameStarted || !store.player || store.player.dead) return;

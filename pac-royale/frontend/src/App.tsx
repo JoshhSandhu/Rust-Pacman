@@ -1,8 +1,7 @@
 import { useMemo, useEffect, useState } from 'react';
-import { ConnectionProvider, WalletProvider, useWallet, useAnchorWallet } from '@solana/wallet-adapter-react';
+import { ConnectionProvider, WalletProvider, useWallet, useAnchorWallet, useConnection } from '@solana/wallet-adapter-react';
 import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
 import { PhantomWalletAdapter } from '@solana/wallet-adapter-wallets';
-import { Connection } from '@solana/web3.js';
 import { Program } from '@coral-xyz/anchor';
 import '@solana/wallet-adapter-react-ui/styles.css';
 
@@ -10,7 +9,7 @@ import { useGameStore } from './state/gameStore';
 import { getProgram, resetProgram, DEVNET_RPC } from './solana/anchorClient';
 import { startPolling, stopPolling, fetchPlayerState } from './solana/fetchState';
 import { sendSpawnPlayer, sendRespawnPlayer } from './solana/transactions';
-import { startDemoMode, initDemoControls } from './game/demoMode';
+import { startDemoMode, initDemoControls, stopDemoMode } from './game/demoMode';
 
 import GameCanvas from './components/GameCanvas';
 import HUD from './components/HUD';
@@ -19,11 +18,10 @@ import WalletButton from './components/WalletButton';
 
 function GameRoot() {
   const wallet = useAnchorWallet();
+  const { connection } = useConnection();
   const { connected, publicKey } = useWallet();
   const [program, setProgram] = useState<Program | null>(null);
   const [demoActive, setDemoActive] = useState(false);
-
-  const connection = useMemo(() => new Connection(DEVNET_RPC, 'confirmed'), []);
 
   const store = useGameStore;
   const gameStarted = useGameStore((s) => s.gameStarted);
@@ -37,6 +35,8 @@ function GameRoot() {
       store.getState().setGameStarted(false);
       resetProgram();
       stopPolling();
+      stopDemoMode();
+      setDemoActive(false);
       setProgram(null);
       return;
     }
@@ -89,8 +89,18 @@ function GameRoot() {
   useEffect(() => {
     if (!demoActive) return;
     const cleanup = initDemoControls();
-    return cleanup;
+    return () => {
+      cleanup();
+      stopDemoMode();
+    };
   }, [demoActive]);
+
+  // Wallet connection takes precedence over demo mode
+  useEffect(() => {
+    if (!connected || !demoActive) return;
+    stopDemoMode();
+    setDemoActive(false);
+  }, [connected, demoActive]);
 
   // Respawn on SPACE key when dead
   useEffect(() => {

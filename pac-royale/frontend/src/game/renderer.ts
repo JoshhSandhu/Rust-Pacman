@@ -21,6 +21,7 @@ interface RenderState {
 
   pacman: PIXI.Container;
   ghostSprites: Map<number, PIXI.Container>;
+  otherPlayerSprites: Map<string, PIXI.Graphics>;
   pelletSprites: Map<string, PIXI.Graphics>;
   powerPelletSprites: Map<string, PIXI.Graphics>;
   scoreTexts: Map<number, PIXI.Text>;
@@ -72,6 +73,7 @@ function createRenderState(app: PIXI.Application): RenderState {
     gridOverlay,
     pacman,
     ghostSprites: new Map(),
+    otherPlayerSprites: new Map(),
     pelletSprites: new Map(),
     powerPelletSprites: new Map(),
     scoreTexts: new Map(),
@@ -82,10 +84,25 @@ function createRenderState(app: PIXI.Application): RenderState {
 
 function buildChunkHash(chunks: Map<number, ChunkState>): string {
   let hash = '';
-  chunks.forEach((chunk, idx) => {
-    hash += `${idx}:${chunk.logicalIndex}:${chunk.templateId};`;
-  });
+  const keys = Array.from(chunks.keys()).sort((a, b) => a - b);
+  for (const idx of keys) {
+    const chunk = chunks.get(idx);
+    if (!chunk) continue;
+    const gridHash = chunk.grid.map((row) => row.join('')).join('|');
+    hash += `${idx}:${chunk.logicalIndex}:${chunk.templateId}:${gridHash};`;
+  }
   return hash;
+}
+
+function createOtherPlayerSprite(): PIXI.Graphics {
+  const g = new PIXI.Graphics();
+  g.beginFill(0x39ff14, 0.95);
+  g.drawCircle(0, 0, CELL_SIZE * 0.3);
+  g.endFill();
+  g.beginFill(0x39ff14, 0.2);
+  g.drawCircle(0, 0, CELL_SIZE * 0.52);
+  g.endFill();
+  return g;
 }
 
 function renderMaze(state: RenderState, isPowered: boolean): void {
@@ -152,7 +169,7 @@ function renderMaze(state: RenderState, isPowered: boolean): void {
 
 function renderEntities(state: RenderState, time: number): void {
   const store = useGameStore.getState();
-  const { player, ghosts, world, isPowered } = store;
+  const { player, ghosts, world, isPowered, otherPlayers } = store;
   if (!world || !player) {
     state.pacman.visible = false;
     return;
@@ -197,6 +214,33 @@ function renderEntities(state: RenderState, time: number): void {
       state.entityContainer.removeChild(sprite);
       sprite.destroy();
       state.ghostSprites.delete(id);
+    }
+  });
+
+  // Other players (multiplayer rendering)
+  const activeOtherPlayers = new Set<string>();
+  otherPlayers.forEach((otherPlayer, key) => {
+    if (otherPlayer.dead) return;
+    activeOtherPlayers.add(key);
+
+    let sprite = state.otherPlayerSprites.get(key);
+    if (!sprite) {
+      sprite = createOtherPlayerSprite();
+      state.entityContainer.addChild(sprite);
+      state.otherPlayerSprites.set(key, sprite);
+    }
+
+    const relChunk = otherPlayer.chunkIndex - scrollOffset;
+    sprite.x = otherPlayer.col * CELL_SIZE + CELL_SIZE / 2;
+    sprite.y = relChunk * CHUNK_HEIGHT + otherPlayer.rowInChunk * CELL_SIZE + CELL_SIZE / 2;
+    sprite.visible = relChunk >= -1 && relChunk <= MAX_CHUNKS + 1;
+  });
+
+  state.otherPlayerSprites.forEach((sprite, key) => {
+    if (!activeOtherPlayers.has(key)) {
+      state.entityContainer.removeChild(sprite);
+      sprite.destroy();
+      state.otherPlayerSprites.delete(key);
     }
   });
 }

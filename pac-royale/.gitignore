@@ -42,3 +42,4 @@ logs
 # Deployment cache
 /deploy-cache/
 *.json.backup
+deployment-info.json

@@ -15,7 +15,7 @@ This document summarizes all work completed on the Pac-Royale project, continuin
   - 11 instructions (init_world, spawn_player, movement, eat_pellet, eat_player, eat_ghost, scroll_map, cash_out, exit_player, etc.)
   - 5 account types (World, Anteroom, Player, Chunk, Ghost)
   - Economy constants (1M lamports/pellet, 10M/ghost, full balance transfer on PvP)
-  - 32 chunks with 30 templates (6×10 grids)
+  - 32 chunks with 5 templates (6×10 grids)
   - 4 ghosts with chase/scatter/frightened states
   - Power pellet system (200 slot duration)
   - Map scrolling (ring buffer)
@@ -127,7 +127,7 @@ This document summarizes all work completed on the Pac-Royale project, continuin
 - ✅ Player vs Player combat (steal full balance when powered)
 - ✅ Ghost collision (death without power)
 - ✅ Endless scrolling map (32 chunk ring buffer)
-- ✅ 30 unique chunk templates
+- ✅ 5 unique chunk templates
 - ✅ Cash out to wallet
 - ✅ Player exit/removal
 
@@ -165,7 +165,7 @@ This document summarizes all work completed on the Pac-Royale project, continuin
 | **Instructions** | 11 |
 | **Account Types** | 5 |
 | **Chunks** | 32 |
-| **Templates** | 30 |
+| **Templates** | 5 |
 | **Ghosts** | 4 |
 | **Test Suites** | 8 |
 

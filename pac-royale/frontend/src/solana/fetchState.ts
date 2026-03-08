@@ -89,39 +89,60 @@ export async function fetchVisibleChunks(program: Program): Promise<void> {
   if (!world) return;
 
   const [worldPda] = getWorldPda();
-  const scrollOffset = world.scrollOffset;
 
-  // Fetch all 32 physical chunks — they map to logical indices via ring buffer
-  const promises: Promise<void>[] = [];
+  const chunkPdas: PublicKey[] = [];
   for (let i = 0; i < MAX_CHUNKS; i++) {
     const [chunkPda] = getChunkPda(worldPda, i);
-    promises.push(
-      (program.account as any).chunk
-        .fetch(chunkPda)
-        .then((acc: any) => {
-          store.setChunk(i, parseChunk(acc));
-        })
-        .catch(() => {}),
-    );
+    chunkPdas.push(chunkPda);
   }
-  await Promise.all(promises);
+
+  try {
+    const chunkAccounts = await (program.account as any).chunk.fetchMultiple(chunkPdas);
+    chunkAccounts.forEach((acc: any, index: number) => {
+      if (!acc) return;
+      store.setChunk(index, parseChunk(acc));
+    });
+  } catch {
+    // Partial chunk availability is expected during initialization
+  }
 }
 
 export async function fetchGhosts(program: Program): Promise<void> {
   const store = useGameStore.getState();
   const [worldPda] = getWorldPda();
 
-  const ghosts: GhostState[] = [];
+  const ghostPdas: PublicKey[] = [];
   for (let i = 0; i < NUM_GHOSTS; i++) {
-    try {
-      const [ghostPda] = getGhostPda(worldPda, i);
-      const acc = await (program.account as any).ghost.fetch(ghostPda);
-      ghosts.push(parseGhost(acc));
-    } catch {
-      // Ghost not initialized
-    }
+    const [ghostPda] = getGhostPda(worldPda, i);
+    ghostPdas.push(ghostPda);
   }
-  store.setGhosts(ghosts);
+
+  try {
+    const ghostAccounts = await (program.account as any).ghost.fetchMultiple(ghostPdas);
+    const ghosts = ghostAccounts.filter(Boolean).map((acc: any) => parseGhost(acc));
+    store.setGhosts(ghosts);
+  } catch {
+    store.setGhosts([]);
+  }
+}
+
+export async function fetchOtherPlayers(program: Program, authority: PublicKey): Promise<void> {
+  const store = useGameStore.getState();
+  const next = new Map<string, PlayerState>();
+
+  try {
+    const entries = await (program.account as any).player.all();
+    for (const entry of entries) {
+      const account = parsePlayer(entry.account);
+      if (!account.authority) continue;
+      if (account.authority.equals(authority)) continue;
+      next.set(account.authority.toBase58(), account);
+    }
+  } catch {
+    // ignore transient RPC errors
+  }
+
+  store.setOtherPlayers(next);
 }
 
 export async function fetchCurrentSlot(connection: Connection): Promise<void> {
@@ -140,21 +161,30 @@ export function startPolling(program: Program, connection: Connection, authority
   fetchPlayerState(program, authority);
   fetchVisibleChunks(program);
   fetchGhosts(program);
+  fetchOtherPlayers(program, authority);
   fetchCurrentSlot(connection);
 
+  let tick = 0;
   pollInterval = setInterval(async () => {
-    await Promise.all([
-      fetchWorldState(program),
+    tick += 1;
+    const tasks: Promise<void>[] = [
       fetchPlayerState(program, authority),
       fetchGhosts(program),
       fetchCurrentSlot(connection),
+    ];
+    if (tick % 2 === 0) {
+      tasks.push(fetchWorldState(program));
+      tasks.push(fetchOtherPlayers(program, authority));
+    }
+    await Promise.all([
+      ...tasks,
     ]);
-  }, 250);
+  }, 1000);
 
   // Separate slower chunk poll
   chunkPollInterval = setInterval(() => {
     fetchVisibleChunks(program);
-  }, 1000);
+  }, 3000);
 }
 
 export function stopPolling() {

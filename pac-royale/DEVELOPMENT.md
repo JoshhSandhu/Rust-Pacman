@@ -111,6 +111,7 @@ solana-test-validator
 anchor deploy
 
 # Initialize world, chunks, and ghosts
+$env:PAC_ROYALE_VAULT_PUBKEY="<FUNDED_VAULT_PUBKEY>"
 npm run init
 ```
 
@@ -127,6 +128,7 @@ solana airdrop 2
 anchor deploy --provider.cluster devnet
 
 # Initialize
+$env:PAC_ROYALE_VAULT_PUBKEY="<FUNDED_VAULT_PUBKEY>"
 npm run init
 ```
 
@@ -140,6 +142,7 @@ solana config set --url mainnet-beta
 anchor deploy --provider.cluster mainnet-beta
 
 # Initialize
+$env:PAC_ROYALE_VAULT_PUBKEY="<FUNDED_VAULT_PUBKEY>"
 npm run init
 ```
 

@@ -52,10 +52,13 @@ anchor test
 ```bash
 # Local
 anchor deploy
+# PowerShell:
+$env:PAC_ROYALE_VAULT_PUBKEY="<FUNDED_VAULT_PUBKEY>"
 npm run init
 
 # Devnet
 anchor deploy --provider.cluster devnet
+$env:PAC_ROYALE_VAULT_PUBKEY="<FUNDED_VAULT_PUBKEY>"
 npm run init
 ```
 
@@ -82,7 +85,7 @@ ts-node examples/play-game.ts
 
 ### Map System
 - **32 chunks** in ring buffer (6 rows × 10 cols each)
-- **30 templates** with different maze layouts
+- **5 templates** with different maze layouts
 - **Scrolling**: Bottom chunk removed, new chunk added at top every 50 slots
 - **Respawn**: Players in removed chunks respawn at top
 
@@ -158,7 +161,7 @@ Tests include:
 
 ## 🔧 Program ID
 
-Current: `94UUCtTLtm1u1NNGSahrEsZJPLqRo4hiyxeAQodoyRQ9`
+Current: `C5JxJHfHuWuCkyRJwen2gMcJ9XzEN8iBhjpZSdoMb57k`
 
 To use your own:
 1. `solana-keygen new -o target/deploy/pac_royale-keypair.json`

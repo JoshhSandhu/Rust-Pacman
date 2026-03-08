@@ -4,9 +4,11 @@
   "description": "Pac-Royale: Endless Pac-Man on Ephemeral Rollups",
   "scripts": {
     "test": "anchor test",
+    "test:smoke": "anchor test -- --grep \"demo smoke\"",
     "build": "anchor build",
     "deploy": "anchor deploy",
     "init": "ts-node --transpile-only scripts/deploy-and-init.ts",
+    "demo:health": "ts-node --transpile-only scripts/demo-health-check.ts",
     "lint": "prettier --check .",
     "format": "prettier --write ."
   },

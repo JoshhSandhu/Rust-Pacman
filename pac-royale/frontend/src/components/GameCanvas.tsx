@@ -1,8 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useGameStore } from '../state/gameStore';
 import { createGameRenderer, GameRenderer } from '../game/renderer';
-import { initControls, destroyControls, DirectionKey } from '../game/controls';
-import { sendMovement, sendEatPellet } from '../solana/transactions';
 import { Program } from '@coral-xyz/anchor';
 
 interface GameCanvasProps {
@@ -12,8 +10,6 @@ interface GameCanvasProps {
 export default function GameCanvas({ program }: GameCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<GameRenderer | null>(null);
-  const txInFlightRef = useRef(false);
-  const queuedDirectionRef = useRef<DirectionKey | null>(null);
   const gameStarted = useGameStore((s) => s.gameStarted);
   const screenFlash = useGameStore((s) => s.screenFlash);
   const playerDead = useGameStore((s) => s.player?.dead ?? false);
@@ -37,47 +33,7 @@ export default function GameCanvas({ program }: GameCanvasProps) {
     };
   }, []);
 
-  // Initialize controls when game starts
-  useEffect(() => {
-    if (!gameStarted || !program) return;
-
-    const processMove = async (direction: DirectionKey) => {
-      if (txInFlightRef.current) {
-        queuedDirectionRef.current = direction;
-        return;
-      }
-
-      txInFlightRef.current = true;
-      try {
-        await sendMovement(program, direction);
-        // After moving, try to eat pellet at new position
-        try {
-          await sendEatPellet(program);
-        } catch {
-          // No pellet at current position — expected
-        }
-      } catch (err) {
-        console.warn('Movement failed:', err);
-      } finally {
-        txInFlightRef.current = false;
-        const nextDirection = queuedDirectionRef.current;
-        queuedDirectionRef.current = null;
-        if (nextDirection !== null) {
-          void processMove(nextDirection);
-        }
-      }
-    };
-
-    initControls((direction) => {
-      void processMove(direction);
-    });
-
-    return () => {
-      destroyControls();
-      txInFlightRef.current = false;
-      queuedDirectionRef.current = null;
-    };
-  }, [gameStarted, program]);
+  // (Controls are now handled exclusively by App.tsx)
 
   return (
     <div className="relative w-full h-full">

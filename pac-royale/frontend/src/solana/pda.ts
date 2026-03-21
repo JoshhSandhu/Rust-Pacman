@@ -1,6 +1,6 @@
 import { PublicKey } from '@solana/web3.js';
 
-export const PROGRAM_ID = new PublicKey('C5JxJHfHuWuCkyRJwen2gMcJ9XzEN8iBhjpZSdoMb57k');
+export const PROGRAM_ID = new PublicKey('46gDjnJLeuMqKLJjHow4B4xt6BLspzf7owBydzSvSByH');
 
 export function getWorldPda(): [PublicKey, number] {
   return PublicKey.findProgramAddressSync([Buffer.from('world')], PROGRAM_ID);
@@ -30,6 +30,13 @@ export function getChunkPda(worldPda: PublicKey, physicalIndex: number): [Public
 export function getGhostPda(worldPda: PublicKey, ghostId: number): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
     [Buffer.from('ghost'), worldPda.toBuffer(), Buffer.from([ghostId])],
+    PROGRAM_ID,
+  );
+}
+
+export function getVaultPda(worldPda: PublicKey): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from('vault'), worldPda.toBuffer()],
     PROGRAM_ID,
   );
 }

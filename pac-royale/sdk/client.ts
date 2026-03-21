@@ -3,6 +3,10 @@ import { Program, BN } from "@coral-xyz/anchor";
 import { PacRoyale } from "../target/types/pac_royale";
 import { PublicKey, SystemProgram, Connection } from "@solana/web3.js";
 
+const BPF_UPGRADEABLE_LOADER_ID = new PublicKey(
+  "BPFLoaderUpgradeab1e11111111111111111111111",
+);
+
 export interface WorldAccount {
   authority: PublicKey;
   name: number[];
@@ -28,6 +32,7 @@ export interface PlayerAccount {
   lastMoveSlot: BN;
   bump: number;
   dead: boolean;
+  sessionKey?: PublicKey | null;
 }
 
 export interface ChunkAccount {
@@ -67,11 +72,68 @@ export interface ProgramAccountResult<T> {
 export class PacRoyaleClient {
   constructor(
     public program: Program<PacRoyale>,
-    public connection: Connection
+    public connection: Connection,
   ) {}
 
   private normalizeModulo(value: number, modulus: number): number {
     return ((value % modulus) + modulus) % modulus;
+  }
+
+  private getDirectionTarget(
+    chunkIndex: number,
+    row: number,
+    col: number,
+    direction: number,
+  ): { chunkIndex: number; row: number; col: number } {
+    let nextChunkIndex = chunkIndex;
+    let nextRow = row;
+    let nextCol = col;
+
+    switch (direction) {
+      case CONSTANTS.DIR_UP:
+        if (row === 0) {
+          nextChunkIndex = chunkIndex - 1;
+          nextRow = CONSTANTS.CHUNK_ROWS - 1;
+        } else {
+          nextRow = row - 1;
+        }
+        break;
+      case CONSTANTS.DIR_DOWN:
+        if (row >= CONSTANTS.CHUNK_ROWS - 1) {
+          nextChunkIndex = chunkIndex + 1;
+          nextRow = 0;
+        } else {
+          nextRow = row + 1;
+        }
+        break;
+      case CONSTANTS.DIR_LEFT:
+        nextCol = Math.max(0, col - 1);
+        break;
+      case CONSTANTS.DIR_RIGHT:
+        nextCol = Math.min(CONSTANTS.CHUNK_COLS - 1, col + 1);
+        break;
+      default:
+        break;
+    }
+
+    return { chunkIndex: nextChunkIndex, row: nextRow, col: nextCol };
+  }
+
+  private maybeDestinationChunkPda(
+    worldPda: PublicKey,
+    currentChunkIndex: number,
+    targetChunkIndex: number,
+    scrollOffset: number,
+  ): PublicKey | null {
+    if (targetChunkIndex === currentChunkIndex) {
+      return null;
+    }
+
+    const physicalIndex = this.normalizeModulo(
+      targetChunkIndex - scrollOffset,
+      CONSTANTS.MAX_CHUNKS,
+    );
+    return this.getChunkPda(worldPda, physicalIndex)[0];
   }
 
   /**
@@ -80,7 +142,7 @@ export class PacRoyaleClient {
   getWorldPda(): [PublicKey, number] {
     return PublicKey.findProgramAddressSync(
       [Buffer.from("world")],
-      this.program.programId
+      this.program.programId,
     );
   }
 
@@ -90,7 +152,27 @@ export class PacRoyaleClient {
   getAnteroomPda(worldPda: PublicKey): [PublicKey, number] {
     return PublicKey.findProgramAddressSync(
       [Buffer.from("anteroom"), worldPda.toBuffer()],
-      this.program.programId
+      this.program.programId,
+    );
+  }
+
+  /**
+   * Derive Vault PDA
+   */
+  getVaultPda(worldPda: PublicKey): [PublicKey, number] {
+    return PublicKey.findProgramAddressSync(
+      [Buffer.from("vault"), worldPda.toBuffer()],
+      this.program.programId,
+    );
+  }
+
+  /**
+   * Derive ProgramData PDA (upgradeable loader)
+   */
+  getProgramDataPda(): [PublicKey, number] {
+    return PublicKey.findProgramAddressSync(
+      [this.program.programId.toBuffer()],
+      BPF_UPGRADEABLE_LOADER_ID,
     );
   }
 
@@ -100,7 +182,7 @@ export class PacRoyaleClient {
   getPlayerPda(worldPda: PublicKey, authority: PublicKey): [PublicKey, number] {
     return PublicKey.findProgramAddressSync(
       [Buffer.from("player"), worldPda.toBuffer(), authority.toBuffer()],
-      this.program.programId
+      this.program.programId,
     );
   }
 
@@ -110,7 +192,7 @@ export class PacRoyaleClient {
   getChunkPda(worldPda: PublicKey, physicalIndex: number): [PublicKey, number] {
     return PublicKey.findProgramAddressSync(
       [Buffer.from("chunk"), worldPda.toBuffer(), Buffer.from([physicalIndex])],
-      this.program.programId
+      this.program.programId,
     );
   }
 
@@ -120,31 +202,32 @@ export class PacRoyaleClient {
   getGhostPda(worldPda: PublicKey, ghostId: number): [PublicKey, number] {
     return PublicKey.findProgramAddressSync(
       [Buffer.from("ghost"), worldPda.toBuffer(), Buffer.from([ghostId])],
-      this.program.programId
+      this.program.programId,
     );
   }
 
   /**
    * Initialize the world
    */
-  async initWorld(
-    authority: PublicKey,
-    vaultPubkey: PublicKey,
-    worldName: string
-  ): Promise<string> {
+  async initWorld(authority: PublicKey, worldName: string): Promise<string> {
     const [worldPda] = this.getWorldPda();
     const [anteroomPda] = this.getAnteroomPda(worldPda);
+    const [vaultPda] = this.getVaultPda(worldPda);
+    const [programDataPda] = this.getProgramDataPda();
 
-    const nameBytes = Buffer.alloc(64);
-    Buffer.from(worldName).copy(nameBytes, 0, 0, Math.min(worldName.length, 64));
+    const encodedName = Buffer.from(worldName, "utf8");
+    const nameBytes =
+      encodedName.length > 64 ? encodedName.subarray(0, 64) : encodedName;
 
     return await this.program.methods
       .initWorld(nameBytes as any)
-      .accounts({
+      .accountsStrict({
         world: worldPda,
         anteroom: anteroomPda,
-        vault: vaultPubkey,
+        vault: vaultPda,
         authority,
+        program: this.program.programId,
+        programData: programDataPda,
         systemProgram: SystemProgram.programId,
       })
       .rpc();
@@ -156,14 +239,14 @@ export class PacRoyaleClient {
   async initChunk(
     authority: PublicKey,
     physicalIndex: number,
-    templateId: number
+    templateId: number,
   ): Promise<string> {
     const [worldPda] = this.getWorldPda();
     const [chunkPda] = this.getChunkPda(worldPda, physicalIndex);
 
     return await this.program.methods
       .initChunk(physicalIndex, templateId)
-      .accounts({
+      .accountsStrict({
         world: worldPda,
         chunk: chunkPda,
         authority,
@@ -184,7 +267,7 @@ export class PacRoyaleClient {
       const templateId = i % numTemplates;
       const sig = await this.initChunk(authority, i, templateId);
       signatures.push(sig);
-      
+
       if (i % 8 === 0) {
         console.log(`Initialized chunk ${i}/${numChunks}`);
       }
@@ -202,7 +285,7 @@ export class PacRoyaleClient {
 
     return await this.program.methods
       .initGhost(ghostId)
-      .accounts({
+      .accountsStrict({
         world: worldPda,
         ghost: ghostPda,
         authority,
@@ -236,7 +319,7 @@ export class PacRoyaleClient {
 
     return await this.program.methods
       .spawnPlayer()
-      .accounts({
+      .accountsStrict({
         world: worldPda,
         player: playerPda,
         authority,
@@ -252,10 +335,12 @@ export class PacRoyaleClient {
   async movement(
     authority: PublicKey,
     direction: number,
-    ghostPdas: PublicKey[] = []
+    ghostPdas: PublicKey[] = [],
+    playerAuthority?: PublicKey,
   ): Promise<string> {
     const [worldPda] = this.getWorldPda();
-    const [playerPda] = this.getPlayerPda(worldPda, authority);
+    const pa = playerAuthority ?? authority;
+    const [playerPda] = this.getPlayerPda(worldPda, pa);
 
     // Get player to determine chunk
     const [player, world] = await Promise.all([
@@ -265,24 +350,40 @@ export class PacRoyaleClient {
 
     const physicalIndex = this.normalizeModulo(
       player.chunkIndex - world.scrollOffset,
-      CONSTANTS.MAX_CHUNKS
+      CONSTANTS.MAX_CHUNKS,
     );
     const [chunkPda] = this.getChunkPda(worldPda, physicalIndex);
-    const fallbackGhostPdas = [0, 1, 2, 3].map((ghostId) => this.getGhostPda(worldPda, ghostId)[0]);
+    const target = this.getDirectionTarget(
+      player.chunkIndex,
+      player.rowInChunk,
+      player.col,
+      direction,
+    );
+    const destinationChunk = this.maybeDestinationChunkPda(
+      worldPda,
+      player.chunkIndex,
+      target.chunkIndex,
+      world.scrollOffset,
+    );
+    const fallbackGhostPdas = [0, 1, 2, 3].map(
+      (ghostId) => this.getGhostPda(worldPda, ghostId)[0],
+    );
     const [ghost0, ghost1, ghost2, ghost3] =
       ghostPdas.length === 4 ? ghostPdas : fallbackGhostPdas;
 
-    return await this.program.methods
+    return await (this.program.methods as any)
       .movement(direction)
       .accounts({
         world: worldPda,
         player: playerPda,
         chunk: chunkPda,
         authority,
+        playerAuthority: pa,
         ghost0,
         ghost1,
         ghost2,
         ghost3,
+        destinationChunk: destinationChunk ?? null,
       })
       .rpc();
   }
@@ -290,9 +391,13 @@ export class PacRoyaleClient {
   /**
    * Eat pellet at current position
    */
-  async eatPellet(authority: PublicKey): Promise<string> {
+  async eatPellet(
+    authority: PublicKey,
+    playerAuthority?: PublicKey,
+  ): Promise<string> {
     const [worldPda] = this.getWorldPda();
-    const [playerPda] = this.getPlayerPda(worldPda, authority);
+    const pa = playerAuthority ?? authority;
+    const [playerPda] = this.getPlayerPda(worldPda, pa);
 
     const [player, world] = await Promise.all([
       this.program.account.player.fetch(playerPda) as Promise<PlayerAccount>,
@@ -301,17 +406,18 @@ export class PacRoyaleClient {
 
     const physicalIndex = this.normalizeModulo(
       player.chunkIndex - world.scrollOffset,
-      CONSTANTS.MAX_CHUNKS
+      CONSTANTS.MAX_CHUNKS,
     );
     const [chunkPda] = this.getChunkPda(worldPda, physicalIndex);
 
     return await this.program.methods
       .eatPellet()
-      .accounts({
+      .accountsStrict({
         world: worldPda,
         player: playerPda,
         chunk: chunkPda,
         authority,
+        playerAuthority: pa,
       })
       .rpc();
   }
@@ -321,19 +427,22 @@ export class PacRoyaleClient {
    */
   async eatPlayer(
     eaterAuthority: PublicKey,
-    victimAuthority: PublicKey
+    victimAuthority: PublicKey,
+    playerAuthority?: PublicKey,
   ): Promise<string> {
     const [worldPda] = this.getWorldPda();
-    const [eaterPda] = this.getPlayerPda(worldPda, eaterAuthority);
+    const pa = playerAuthority ?? eaterAuthority;
+    const [eaterPda] = this.getPlayerPda(worldPda, pa);
     const [victimPda] = this.getPlayerPda(worldPda, victimAuthority);
 
     return await this.program.methods
       .eatPlayer()
-      .accounts({
+      .accountsStrict({
         eater: eaterPda,
         victim: victimPda,
         world: worldPda,
         authority: eaterAuthority,
+        playerAuthority: pa,
         victimAuthority,
       })
       .rpc();
@@ -342,18 +451,24 @@ export class PacRoyaleClient {
   /**
    * Eat ghost (when powered)
    */
-  async eatGhost(authority: PublicKey, ghostId: number): Promise<string> {
+  async eatGhost(
+    authority: PublicKey,
+    ghostId: number,
+    playerAuthority?: PublicKey,
+  ): Promise<string> {
     const [worldPda] = this.getWorldPda();
-    const [playerPda] = this.getPlayerPda(worldPda, authority);
+    const pa = playerAuthority ?? authority;
+    const [playerPda] = this.getPlayerPda(worldPda, pa);
     const [ghostPda] = this.getGhostPda(worldPda, ghostId);
 
     return await this.program.methods
       .eatGhost(ghostId)
-      .accounts({
+      .accountsStrict({
         world: worldPda,
         player: playerPda,
         ghost: ghostPda,
         authority,
+        playerAuthority: pa,
       })
       .rpc();
   }
@@ -363,14 +478,16 @@ export class PacRoyaleClient {
    */
   async scrollMap(authority: PublicKey): Promise<string> {
     const [worldPda] = this.getWorldPda();
-    const world = await this.program.account.world.fetch(worldPda) as WorldAccount;
+    const world = (await this.program.account.world.fetch(
+      worldPda,
+    )) as WorldAccount;
 
     const bottomPhysicalIndex = world.scrollOffset % 32;
     const [chunkPda] = this.getChunkPda(worldPda, bottomPhysicalIndex);
 
     return await this.program.methods
       .scrollMap()
-      .accounts({
+      .accountsStrict({
         world: worldPda,
         chunk: chunkPda,
         authority,
@@ -383,7 +500,7 @@ export class PacRoyaleClient {
    */
   async cashOut(
     authority: PublicKey,
-    payoutWallet: PublicKey
+    payoutWallet: PublicKey,
   ): Promise<string> {
     const [worldPda] = this.getWorldPda();
     const [playerPda] = this.getPlayerPda(worldPda, authority);
@@ -393,7 +510,7 @@ export class PacRoyaleClient {
 
     return await this.program.methods
       .cashOut()
-      .accounts({
+      .accountsStrict({
         player: playerPda,
         anteroom: anteroomPda,
         world: worldPda,
@@ -414,7 +531,7 @@ export class PacRoyaleClient {
 
     return await this.program.methods
       .exitPlayer()
-      .accounts({
+      .accountsStrict({
         world: worldPda,
         player: playerPda,
         authority,
@@ -427,7 +544,7 @@ export class PacRoyaleClient {
    */
   async fetchWorld(): Promise<WorldAccount> {
     const [worldPda] = this.getWorldPda();
-    return await this.program.account.world.fetch(worldPda) as WorldAccount;
+    return (await this.program.account.world.fetch(worldPda)) as WorldAccount;
   }
 
   /**
@@ -436,14 +553,16 @@ export class PacRoyaleClient {
   async fetchPlayer(authority: PublicKey): Promise<PlayerAccount> {
     const [worldPda] = this.getWorldPda();
     const [playerPda] = this.getPlayerPda(worldPda, authority);
-    return await this.program.account.player.fetch(playerPda) as PlayerAccount;
+    return (await this.program.account.player.fetch(
+      playerPda,
+    )) as PlayerAccount;
   }
 
   /**
    * Fetch all players
    */
   async fetchAllPlayers(): Promise<ProgramAccountResult<PlayerAccount>[]> {
-    return await this.program.account.player.all() as ProgramAccountResult<PlayerAccount>[];
+    return (await this.program.account.player.all()) as ProgramAccountResult<PlayerAccount>[];
   }
 
   /**
@@ -452,14 +571,16 @@ export class PacRoyaleClient {
   async fetchChunk(physicalIndex: number): Promise<ChunkAccount> {
     const [worldPda] = this.getWorldPda();
     const [chunkPda] = this.getChunkPda(worldPda, physicalIndex);
-    return await this.program.account.chunk.fetch(chunkPda) as ChunkAccount;
+    return (await this.program.account.chunk.fetch(chunkPda)) as ChunkAccount;
   }
 
   async fetchChunksByPhysicalIndices(
-    physicalIndices: number[]
+    physicalIndices: number[],
   ): Promise<Array<{ physicalIndex: number; chunk: ChunkAccount }>> {
     const [worldPda] = this.getWorldPda();
-    const chunkPdas = physicalIndices.map((index) => this.getChunkPda(worldPda, index)[0]);
+    const chunkPdas = physicalIndices.map(
+      (index) => this.getChunkPda(worldPda, index)[0],
+    );
     const accounts = await this.program.account.chunk.fetchMultiple(chunkPdas);
 
     const results: Array<{ physicalIndex: number; chunk: ChunkAccount }> = [];
@@ -480,7 +601,7 @@ export class PacRoyaleClient {
   async fetchAllChunks(): Promise<ChunkAccount[]> {
     const physicalIndices = Array.from(
       { length: CONSTANTS.MAX_CHUNKS },
-      (_, i) => i
+      (_, i) => i,
     );
     const batched = await this.fetchChunksByPhysicalIndices(physicalIndices);
     return batched.map(({ chunk }) => chunk);
@@ -492,14 +613,59 @@ export class PacRoyaleClient {
   async fetchGhost(ghostId: number): Promise<GhostAccount> {
     const [worldPda] = this.getWorldPda();
     const [ghostPda] = this.getGhostPda(worldPda, ghostId);
-    return await this.program.account.ghost.fetch(ghostPda) as GhostAccount;
+    return (await this.program.account.ghost.fetch(ghostPda)) as GhostAccount;
+  }
+
+  async moveGhost(
+    authority: PublicKey,
+    ghostId: number,
+    direction: number,
+  ): Promise<string> {
+    const [worldPda] = this.getWorldPda();
+    const [ghostPda] = this.getGhostPda(worldPda, ghostId);
+
+    const [ghost, world] = await Promise.all([
+      this.program.account.ghost.fetch(ghostPda) as Promise<GhostAccount>,
+      this.program.account.world.fetch(worldPda) as Promise<WorldAccount>,
+    ]);
+
+    const physicalIndex = this.normalizeModulo(
+      ghost.chunkIndex - world.scrollOffset,
+      CONSTANTS.MAX_CHUNKS,
+    );
+    const [chunkPda] = this.getChunkPda(worldPda, physicalIndex);
+    const target = this.getDirectionTarget(
+      ghost.chunkIndex,
+      ghost.row,
+      ghost.col,
+      direction,
+    );
+    const destinationChunk = this.maybeDestinationChunkPda(
+      worldPda,
+      ghost.chunkIndex,
+      target.chunkIndex,
+      world.scrollOffset,
+    );
+
+    return await (this.program.methods as any)
+      .moveGhost(ghostId, direction)
+      .accounts({
+        world: worldPda,
+        ghost: ghostPda,
+        chunk: chunkPda,
+        destinationChunk: destinationChunk ?? null,
+        authority,
+      })
+      .rpc();
   }
 
   async fetchGhostsByIds(
-    ghostIds: number[]
+    ghostIds: number[],
   ): Promise<Array<{ ghostId: number; ghost: GhostAccount }>> {
     const [worldPda] = this.getWorldPda();
-    const ghostPdas = ghostIds.map((ghostId) => this.getGhostPda(worldPda, ghostId)[0]);
+    const ghostPdas = ghostIds.map(
+      (ghostId) => this.getGhostPda(worldPda, ghostId)[0],
+    );
     const accounts = await this.program.account.ghost.fetchMultiple(ghostPdas);
 
     const results: Array<{ ghostId: number; ghost: GhostAccount }> = [];
@@ -527,7 +693,7 @@ export class PacRoyaleClient {
    */
   subscribeToPlayer(
     authority: PublicKey,
-    callback: (player: PlayerAccount) => void
+    callback: (player: PlayerAccount) => void,
   ): number {
     const [worldPda] = this.getWorldPda();
     const [playerPda] = this.getPlayerPda(worldPda, authority);
@@ -537,11 +703,11 @@ export class PacRoyaleClient {
       (accountInfo) => {
         const player = this.program.coder.accounts.decode(
           "player",
-          accountInfo.data
+          accountInfo.data,
         ) as PlayerAccount;
         callback(player);
       },
-      "confirmed"
+      "confirmed",
     );
   }
 
@@ -556,11 +722,11 @@ export class PacRoyaleClient {
       (accountInfo) => {
         const world = this.program.coder.accounts.decode(
           "world",
-          accountInfo.data
+          accountInfo.data,
         ) as WorldAccount;
         callback(world);
       },
-      "confirmed"
+      "confirmed",
     );
   }
 
@@ -579,7 +745,7 @@ export class PacRoyaleClient {
     const world = await this.fetchWorld();
     const physicalIndex = this.normalizeModulo(
       player.chunkIndex - world.scrollOffset,
-      CONSTANTS.MAX_CHUNKS
+      CONSTANTS.MAX_CHUNKS,
     );
     const chunk = await this.fetchChunk(physicalIndex);
     return chunk.grid;
@@ -608,7 +774,7 @@ export class PacRoyaleClient {
  */
 export function createPacRoyaleClient(
   program: Program<PacRoyale>,
-  connection: Connection
+  connection: Connection,
 ): PacRoyaleClient {
   return new PacRoyaleClient(program, connection);
 }
@@ -621,23 +787,23 @@ export const CONSTANTS = {
   LAMPORTS_PER_GHOST_KILL: 10_000_000,
   CHUNK_ROWS: 6,
   CHUNK_COLS: 10,
-  NUM_CHUNK_TEMPLATES: 5,
+  NUM_CHUNK_TEMPLATES: 10,
   MAX_CHUNKS: 32,
   POWER_PELLET_DURATION_SLOTS: 200,
   NUM_GHOSTS: 4,
-  
+
   // Cell types
   CELL_EMPTY: 0,
   CELL_WALL: 1,
   CELL_PELLET: 2,
   CELL_POWER: 3,
-  
+
   // Directions
   DIR_UP: 0,
   DIR_DOWN: 1,
   DIR_LEFT: 2,
   DIR_RIGHT: 3,
-  
+
   // Ghost states
   GHOST_CHASE: 0,
   GHOST_SCATTER: 1,

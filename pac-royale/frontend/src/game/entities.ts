@@ -16,30 +16,30 @@ export const GHOST_FRIGHTENED_COLOR = 0x2121DE;
 export function createPacMan(): PIXI.Container {
   const container = new PIXI.Container();
 
-  // Body circle
+  // Glow (index 0)
+  const glow = new PIXI.Graphics();
+  glow.beginFill(0xFFE600, 0.15);
+  glow.drawCircle(0, 0, CELL_SIZE * 0.7);
+  glow.endFill();
+  container.addChild(glow);
+
+  // Body (index 1)
   const body = new PIXI.Graphics();
   body.beginFill(0xFFE600);
   body.drawCircle(0, 0, CELL_SIZE * 0.4);
   body.endFill();
   container.addChild(body);
 
-  // Mouth (animated via update)
+  // Mouth (index 2 — animated via update)
   const mouth = new PIXI.Graphics();
   container.addChild(mouth);
 
-  // Eye
+  // Eye (index 3)
   const eye = new PIXI.Graphics();
   eye.beginFill(0x000000);
   eye.drawCircle(3, -6, 3);
   eye.endFill();
   container.addChild(eye);
-
-  // Glow effect
-  const glow = new PIXI.Graphics();
-  glow.beginFill(0xFFE600, 0.15);
-  glow.drawCircle(0, 0, CELL_SIZE * 0.7);
-  glow.endFill();
-  container.addChildAt(glow, 0);
 
   return container;
 }
@@ -49,7 +49,6 @@ export function updatePacMan(
   direction: number,
   time: number,
 ): void {
-  // Rotation based on direction
   switch (direction) {
     case DIR_UP: container.rotation = -Math.PI / 2; break;
     case DIR_DOWN: container.rotation = Math.PI / 2; break;
@@ -57,7 +56,7 @@ export function updatePacMan(
     case DIR_RIGHT: container.rotation = 0; break;
   }
 
-  // Animate mouth
+  // Animate mouth (index 2)
   const mouth = container.children[2] as PIXI.Graphics;
   if (mouth) {
     const mouthAngle = Math.abs(Math.sin(time * 8)) * 0.6 + 0.1;
@@ -69,7 +68,7 @@ export function updatePacMan(
     mouth.endFill();
   }
 
-  // Animate glow pulse
+  // Animate glow pulse (index 0)
   const glow = container.children[0] as PIXI.Graphics;
   if (glow) {
     const pulse = 0.8 + Math.sin(time * 3) * 0.2;
@@ -83,15 +82,20 @@ export function createGhost(ghostId: number): PIXI.Container {
   const container = new PIXI.Container();
   const color = GHOST_COLORS[ghostId] ?? 0xFF0000;
 
-  // Body
+  // Glow (index 0)
+  const glow = new PIXI.Graphics();
+  glow.beginFill(color, 0.1);
+  glow.drawCircle(0, 0, CELL_SIZE * 0.6);
+  glow.endFill();
+  container.addChild(glow);
+
+  // Body (index 1)
   const body = new PIXI.Graphics();
   body.beginFill(color);
-  // Ghost shape: rounded top, wavy bottom
   body.moveTo(-CELL_SIZE * 0.35, CELL_SIZE * 0.3);
   body.lineTo(-CELL_SIZE * 0.35, -CELL_SIZE * 0.1);
   body.arc(0, -CELL_SIZE * 0.1, CELL_SIZE * 0.35, Math.PI, 0);
   body.lineTo(CELL_SIZE * 0.35, CELL_SIZE * 0.3);
-  // Wavy bottom
   const w = CELL_SIZE * 0.7;
   const segments = 3;
   const segW = w / segments;
@@ -119,32 +123,11 @@ export function createGhost(ghostId: number): PIXI.Container {
     container.addChild(pupil);
   }
 
-  // Glow
-  const glow = new PIXI.Graphics();
-  glow.beginFill(color, 0.1);
-  glow.drawCircle(0, 0, CELL_SIZE * 0.6);
-  glow.endFill();
-  container.addChildAt(glow, 0);
+  // ✅ Store the initial _baseY on the container so the float animation
+  // applies a relative offset rather than accumulating permanently.
+  (container as any)._baseY = 0;
 
   return container;
-}
-
-export function updateGhost(
-  container: PIXI.Container,
-  time: number,
-  frightened: boolean,
-  ghostId: number,
-): void {
-  // Float animation
-  container.y += Math.sin(time * 2 + ghostId * 1.5) * 0.3;
-
-  // Frightened mode: turn blue
-  const body = container.children[1] as PIXI.Graphics; // index 1 because glow is 0
-  if (frightened && body) {
-    body.tint = GHOST_FRIGHTENED_COLOR;
-  } else if (body) {
-    body.tint = 0xFFFFFF; // reset tint
-  }
 }
 
 // --- Pellet ---
@@ -183,4 +166,24 @@ export function updatePowerPellet(g: PIXI.Graphics, time: number): void {
   const pulse = 0.7 + Math.sin(time * 4) * 0.3;
   g.scale.set(pulse);
   g.alpha = 0.7 + Math.sin(time * 3) * 0.3;
+}
+
+export function updateGhost(
+  container: PIXI.Container,
+  time: number,
+  frightened: boolean,
+  ghostId: number,
+): void {
+  // ✅ FIXED: Float animation now reads _baseY and applies offset WITHOUT mutation.
+  // Old code: `container.y += Math.sin(...) * 0.3` accumulated every frame → jitter.
+  const baseY = (container as any)._baseY ?? container.y;
+  container.y = baseY + Math.sin(time * 2 + ghostId * 1.5) * 2.5;
+
+  // Frightened mode: turn blue
+  const body = container.children[1] as PIXI.Graphics;
+  if (frightened && body) {
+    body.tint = GHOST_FRIGHTENED_COLOR;
+  } else if (body) {
+    body.tint = 0xFFFFFF;
+  }
 }

@@ -52,13 +52,10 @@ anchor test
 ```bash
 # Local
 anchor deploy
-# PowerShell:
-$env:PAC_ROYALE_VAULT_PUBKEY="<FUNDED_VAULT_PUBKEY>"
 npm run init
 
 # Devnet
 anchor deploy --provider.cluster devnet
-$env:PAC_ROYALE_VAULT_PUBKEY="<FUNDED_VAULT_PUBKEY>"
 npm run init
 ```
 

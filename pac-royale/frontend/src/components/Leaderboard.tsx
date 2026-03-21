@@ -5,8 +5,18 @@ export default function Leaderboard() {
   const world = useGameStore((s) => s.world);
   const connected = useGameStore((s) => s.connected);
   const otherPlayers = useGameStore((s) => s.otherPlayers);
+  const currentSlot = useGameStore((s) => s.currentSlot);
+  const demoMode = useGameStore((s) => s.demoMode);
 
   if (!connected || !world) return null;
+
+  const visibleOtherPlayers = Array.from(otherPlayers.entries()).filter(
+    ([, value]) =>
+      !value.dead &&
+      (demoMode ||
+        currentSlot === 0 ||
+        currentSlot - value.lastMoveSlot <= 150),
+  );
 
   const boardEntries = [
     {
@@ -15,7 +25,7 @@ export default function Leaderboard() {
       balanceLamports: player?.balanceLamports ?? 0,
       you: true,
     },
-    ...Array.from(otherPlayers.entries()).map(([key, value]) => ({
+    ...visibleOtherPlayers.map(([key, value]) => ({
       rankKey: key,
       name: key.slice(0, 4).toUpperCase(),
       balanceLamports: value.balanceLamports,
@@ -67,7 +77,9 @@ export default function Leaderboard() {
         <div className="mt-4 pt-3 border-t border-neon-blue/20">
           <div className="flex justify-between mb-1">
             <span className="font-arcade text-[7px] text-gray-500">PLAYERS</span>
-            <span className="font-arcade text-[7px] text-neon-blue">{world.totalPlayers}</span>
+            <span className="font-arcade text-[7px] text-neon-blue">
+              {1 + visibleOtherPlayers.length}
+            </span>
           </div>
           <div className="flex justify-between mb-1">
             <span className="font-arcade text-[7px] text-gray-500">SCROLL</span>

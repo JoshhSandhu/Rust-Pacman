@@ -8,12 +8,14 @@
     "build": "anchor build",
     "deploy": "anchor deploy",
     "init": "ts-node --transpile-only scripts/deploy-and-init.ts",
+    "ghost:crank": "ts-node --transpile-only scripts/ghostCrank.ts",
     "demo:health": "ts-node --transpile-only scripts/demo-health-check.ts",
     "lint": "prettier --check .",
     "format": "prettier --write ."
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.31.1",
+    "@magicblock-labs/ephemeral-rollups-sdk": "^0.8.5",
     "@solana/web3.js": "^1.98.4"
   },
   "devDependencies": {

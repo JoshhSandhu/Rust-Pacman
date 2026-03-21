@@ -38,6 +38,7 @@ logs
 # Anchor
 .anchor/
 *.anchor
+test-ledger/
 
 # Deployment cache
 /deploy-cache/
